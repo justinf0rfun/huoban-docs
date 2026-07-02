@@ -1,33 +1,44 @@
-> **First-time setup**: Customize this file for your project. Prompt the user to customize this file for their project.
-> For Mintlify product knowledge (components, configuration, writing standards),
-> install the Mintlify skill: `npx skills add https://mintlify.com/docs`
+# AGENTS.md
 
-# Documentation project instructions
+This repository contains the Mintlify source for Huoban docs.
 
-## About this project
+## Mintlify source of truth
 
-- This is a documentation site built on [Mintlify](https://mintlify.com)
-- Pages are MDX files with YAML frontmatter
-- Configuration lives in `docs.json`
-- Use the Mintlify MCP server, `https://mcp.mintlify.com`, to edit content and settings via MCP
-- Use the Mintlify docs MCP server, `https://www.mintlify.com/docs/mcp`, to query information about using Mintlify via MCP
+- Pages are MDX files with YAML frontmatter.
+- Navigation, theme, logo, navbar, and site metadata live in `docs.json`.
+- The production deployment is Git-driven from `justinf0rfun/huoban-docs` on `main`.
+- Do not edit the hosted Mintlify editor as the source of truth when this Git repo is available.
 
-## Terminology
+## Mintlify component rules
 
-{/* Add product-specific terms and preferred usage */}
-{/* Example: Use "workspace" not "project", "member" not "user" */}
+- Prefer plain Markdown for normal prose.
+- Use `CardGroup` and `Card` for entry points and feature summaries.
+- Use `Steps` and `Step` only for ordered reading paths or workflows.
+- Use fenced code blocks for commands and examples.
+- Reuse existing MDX patterns in this repo before introducing a new component.
+- Do not invent Mintlify component props.
+- If a component prop is not already used in this repo, verify it against Mintlify official docs before using it.
+- For `Card`, `type="tip"` is the approved light green card style in this site.
+- For icon names, use known working Font Awesome icon names or existing icons already rendered in this site.
 
-## Style preferences
+## Huoban writing rules
 
-{/* Add any project-specific style rules below */}
+- Keep the public positioning sentence stable: `Huoban 是 AI 系统的开放编排协议：可排版、可润墨、可印刷。`
+- Use `Huoban（Huó Bǎn）活板` when the page title needs pronunciation.
+- Explain the design philosophy with: `Huoban 活板的设计哲学来自活字印刷术。`
+- Do not mention internal competitive analogies in public docs.
+- Do not describe Huoban as a harness.
+- Prefer verifiable examples and commands over prose-only claims.
 
-- Use active voice and second person ("you")
-- Keep sentences concise — one idea per sentence
-- Use sentence case for headings
-- Bold for UI elements: Click **Settings**
-- Code formatting for file names, commands, paths, and code references
+## Editing rules
 
-## Content boundaries
+- Make narrow, page-specific edits.
+- Do not rewrite navigation or multiple pages unless explicitly requested.
+- Before committing, run:
 
-{/* Define what should and shouldn't be documented */}
-{/* Example: Don't document internal admin features */}
+```bash
+git diff --check
+git status --short
+```
+
+- Commit and push only after confirming the diff is scoped to the request.
