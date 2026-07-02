@@ -90,6 +90,23 @@ Huoban 的目标，是让 AI 工作变得明确、可编程、可检查、可复
 - 不隐藏输入、输出和副作用。
 - 能说明自己是否会读文件、写文件、执行命令、访问网络、花钱、发布远端变更或访问密钥。
 
+它和今天很多 AI 工具里“安装的 skill”有直接关系，但不是同一个层级的概念。
+
+共同点在于：二者都把一类可复用能力从临时 prompt 中抽出来，给它命名、保存，并让 agent 在合适的任务中调用。一个代码审查 skill、文档改写 skill、产品方案 grill skill，本质上都在解决“能力不要每次重新发明”的问题。
+
+差异在于：工具里的 skill 通常是某个 agent runtime 可读取的操作说明，而 Huoban 的 `Skill` 是协议对象。它不仅要说明“怎么做”，还要声明 capability、输入、输出、副作用、上下文需求、信任信息，以及它能否被放进不同 `Flow` 中重排。
+
+| 维度 | AI 工具安装的 skill | Huoban `Skill` |
+| --- | --- | --- |
+| 所属层级 | 某个工具或 agent runtime 的能力包 | 跨工具的标准对象 |
+| 主要内容 | 操作说明、触发条件、参考资料 | capability、inputs、outputs、side effects、trust metadata |
+| 上下文处理 | 常和工具、项目或聊天历史耦合 | 项目上下文应放进 `Profile` |
+| 编排方式 | 由工具决定何时调用 | 可被 `Flow` 显式排版 |
+| 安全边界 | 依赖工具自己的权限模型 | 由 `Policy`、`Run`、`Checkpoint` 和 `Trust` 一起约束 |
+| 迁移路径 | 直接安装到某个工具 | 先通过 `Adapter` 标准化，再视情况提升为原生 `Skill` |
+
+因此，Huoban 不要求重写已有 skill 生态。更合理的路径是：把现有 `SKILL.md`、Claude Code skill、Codex skill 或其他工具能力先导入为 `Adapter`，补齐 capability、输入输出、副作用和信任信息，再决定它是否可以成为标准 `Skill`。详见 [导入 SKILL.md](/import-skill-md) 和 [Adapter 对象](/spec-adapter)。
+
 示例：
 
 ```yaml
