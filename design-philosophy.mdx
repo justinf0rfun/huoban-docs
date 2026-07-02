@@ -96,10 +96,13 @@ Huoban 的目标，是让 AI 工作变得明确、可编程、可检查、可复
 
 差异在于：工具里的 skill 通常是某个 agent runtime 可读取的操作说明，而 Huoban 的 `Skill` 是协议对象。它不仅要说明“怎么做”，还要声明 capability、输入、输出、副作用、上下文需求、信任信息，以及它能否被放进不同 `Flow` 中重排。
 
+这里也可以借用汉字的部件结构来理解。传统活字通常以整字为字模，不是每次用偏旁部首现场拼字；但中文读者天然能理解，一个字并不是无结构的黑块，它可以被拆成偏旁、部首、笔画和构形关系。Huoban 的 `Skill` 也不是一整块不可分析的能力包，而是由 capability、inputs、outputs、side effects、trust metadata 等结构部件组成。只有这些部件清楚，`Skill` 才能被检索、校验、替换、组合和治理。
+
 | 维度 | AI 工具安装的 skill | Huoban `Skill` |
 | --- | --- | --- |
 | 所属层级 | 某个工具或 agent runtime 的能力包 | 跨工具的标准对象 |
 | 主要内容 | 操作说明、触发条件、参考资料 | capability、inputs、outputs、side effects、trust metadata |
+| 结构粒度 | 往往是一整段可执行说明 | 可拆成标准字段并被机器验证 |
 | 上下文处理 | 常和工具、项目或聊天历史耦合 | 项目上下文应放进 `Profile` |
 | 编排方式 | 由工具决定何时调用 | 可被 `Flow` 显式排版 |
 | 安全边界 | 依赖工具自己的权限模型 | 由 `Policy`、`Run`、`Checkpoint` 和 `Trust` 一起约束 |
