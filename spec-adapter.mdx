@@ -1,0 +1,79 @@
+---
+title: "Adapter 对象"
+sidebarTitle: "Adapter"
+description: "Adapter 是 Huoban 的外部能力标准化边界，把 SKILL.md、MCP tool 或上下文文件等来源转成兼容对象。"
+---
+
+# Adapter 对象
+
+`Adapter` 是异形活字转接件。它把外部 skill、MCP tool、上下文文件或项目规则转换为 Huoban 可以理解的对象。
+
+Adapter 不是简单调用桥。它必须补齐 capability、输入输出、副作用、checkpoint、policy hints 和 trust 信息。
+
+## 适配来源
+
+常见来源：
+
+- `SKILL.md`
+- MCP tool
+- Claude Code skill
+- Codex skill
+- Cursor Rules
+- Superpowers / OpenSpec 类 workflow
+- 内部团队脚本或外部工具链
+
+## spec 字段
+
+| 字段 | 要求 | 说明 |
+| --- | --- | --- |
+| `source` | 必填 | 外部来源类型和位置。 |
+| `capabilities` | 必填 | 该 Adapter 声明满足的能力。 |
+| `mapping.inputs` | 可选 | Huoban 输入到外部输入的映射。 |
+| `mapping.outputs` | 可选 | 外部输出到 Huoban artifact 的映射。 |
+| `sideEffects.declared` | 必填 | 可能副作用。未知时必须标记。 |
+| `checkpoint` | 可选 | 外部能力是否需要人工校对。 |
+| `trustRef` | 可选 | 信任信息引用。 |
+| `fallback` | 可选 | 失败或不兼容时的策略。 |
+
+## 最小示例
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Adapter
+metadata:
+  name: grill-me-skill-md
+spec:
+  source:
+    type: skillMd
+    path: skills/grill-me/SKILL.md
+  capabilities:
+    - huoban.dev/designReview
+    - huoban.dev/planning
+  mapping:
+    inputs:
+      prompt: user.idea
+    outputs:
+      review: artifact.decisionNotes
+  sideEffects:
+    declared:
+      - readFile
+      - writeFile
+  checkpoint:
+    recommended: true
+  trustRef:
+    name: local-reviewed-source
+```
+
+## status
+
+常见 conditions：
+
+- `AdapterImported`
+- `CapabilityMapped`
+- `SideEffectsInferred`
+- `ImportNeedsReview`
+- `TrustResolved`
+
+## 设计约束
+
+导入 `SKILL.md` 时，默认生成 Adapter，而不是直接生成 trusted Skill。只有经过 review、补齐 side effects 和 trust 信息后，才能提升为原生 Skill 或受信 Adapter。

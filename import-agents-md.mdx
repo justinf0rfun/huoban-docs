@@ -1,0 +1,109 @@
+---
+title: "导入 AGENTS.md"
+sidebarTitle: "导入 AGENTS.md"
+description: "把 AGENTS.md 从自然语言指令文件迁移为 Huoban Profile。"
+---
+
+# 导入 [AGENTS.md](http://AGENTS.md)
+
+`AGENTS.md` 是 Huoban 最重要的迁移入口之一。
+
+它通常包含项目规则、编码习惯、测试命令、审查标准、安全约束和 agent 行为要求。Huoban 不应该替代它，而应该把它升级成标准 Profile 对象。
+
+## 定位
+
+```text
+AGENTS.md = profile file
+Huoban Profile = profile object
+```
+
+导入后，原始文本必须保留，不能因为结构化而丢失信息。
+
+## 命令
+
+```bash
+huoban import AGENTS.md --as Profile --out profiles/project.yaml
+```
+
+## 转换规则
+
+Huoban import 应执行以下步骤：
+
+1. 读取原始 Markdown。
+2. 保留完整原文到 `content`。
+3. 识别可结构化的规则并写入 `data`。
+4. 推断 layer。
+5. 标记不确定项。
+6. 生成 `ImportNeedsReview` condition。
+
+## 推荐 layer
+
+| AGENTS.md 内容 | Profile layer |
+| --- | --- |
+| 编码风格 | `style` |
+| 测试命令 | `commands` / `testing` |
+| 架构边界 | `architecture` |
+| 安全要求 | `risk` 或 Policy 引用 |
+| 代码审查要求 | `review` |
+| 禁止行为 | Policy，不应只放 Profile |
+| 项目背景 | `domain` / `context` |
+
+## 示例
+
+输入：
+
+```md
+# AGENTS.md
+
+- Prefer small, surgical changes.
+- Run npm test before final response.
+- Do not modify unrelated files.
+- Ask before pushing to remote.
+```
+
+输出：
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Profile
+metadata:
+  name: project-agents-profile
+spec:
+  layers:
+    - name: style
+      data:
+        preferSmallChanges: true
+        avoidUnrelatedChanges: true
+      content: |
+        Prefer small, surgical changes.
+        Do not modify unrelated files.
+    - name: testing
+      data:
+        testCommand: npm test
+      content: |
+        Run npm test before final response.
+  policyRefs:
+    - require-approval-for-remote-publish
+status:
+  conditions:
+    - type: ImportNeedsReview
+      status: "True"
+      reason: InferredFromMarkdown
+      message: "Policy reference was inferred from a natural-language rule."
+```
+
+## 导出
+
+Huoban 必须支持导出回 `AGENTS.md`：
+
+```bash
+huoban export profiles/project-agents-profile.yaml --to AGENTS.md
+```
+
+导出应生成可读 Markdown，而不是机器配置转储。
+
+## 注意事项
+
+- 不要把危险操作规则只当作自然语言偏好；应迁移到 Policy。
+- 不确定的推断必须保留 condition。
+- 导入结果默认不应被视为完全 trusted，需要用户 review。

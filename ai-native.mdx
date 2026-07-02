@@ -1,0 +1,138 @@
+---
+title: "AI-Native 文档"
+sidebarTitle: "AI-Native 文档"
+description: "Huoban 文档如何同时服务人类读者、AI agent、机器验证和公司实践反馈。"
+icon:
+  name: "bot"
+  library: "lucide"
+---
+
+# AI-Native 文档
+
+Huoban 的文档不是只写给人看的，也不是只写给 AI 看的。
+
+它应该让人能理解设计哲学，让 AI 能找到事实来源，让机器能验证对象，让团队能区分公共标准和公司实践。
+
+这才是 Huoban 文档的 AI-native 含义。
+
+## 定义
+
+一套 Huoban 文档达到 AI-native，至少要满足四个条件：
+
+1. 人能理解产品方向和设计哲学。
+2. AI agent 能找到稳定的事实来源，而不是靠猜。
+3. 机器能验证 AI 生成的对象。
+4. 团队能把公共标准和私有项目经验分开治理。
+
+当前仓库已经具备基础：
+
+- 有来自活字印刷术的设计哲学。
+- 有核心协议对象的 JSON Schema。
+- 有覆盖对象家族的 YAML 示例。
+- 有 `validate`、`explain`、`import`、`export`、`derive`、`print --dry-run` CLI。
+- 有 `llms.txt` 作为 AI 入口。
+
+## AI 应该如何阅读 Huoban
+
+AI agent 应该按这个顺序阅读：
+
+1. 读 `llms.txt`，先理解项目边界。
+2. 读 README / 简介，理解核心对象和命令。
+3. 读设计哲学，理解对象为什么这样设计。
+4. 读 `schemas/v1alpha1/*.schema.json`，再生成 YAML。
+5. 读 `examples/**/*.yaml`，再提出新对象。
+6. 修改或生成示例后运行 `npm run validate`。
+
+当 prose 和 schema 冲突时，以 schema 为准。对象形状不能靠自然语言猜。
+
+## AI 应该如何生成 Huoban 对象
+
+AI agent 应该按这个顺序生成 Huoban 对象：
+
+1. 用 `Skill` 或 `Adapter` 描述可复用能力。
+2. 用 `Profile` 描述项目上下文。
+3. 用 `Policy` 描述副作用、审批和权限边界。
+4. 用 `Flow` 描述 capability-first 的工作流。
+5. 用 `huoban print --dry-run` 生成计划态 `Run`。
+6. 用 `Checkpoint` 记录需要校对的决策点。
+7. 用 `Artifact` 记录产物。
+
+这个顺序很重要，因为 Huoban 把能力、上下文、编排、执行快照、校对和产物分开。
+
+## 可验证对象链路
+
+`idea-to-spec-review` 示例展示 AI-native 文档如何从 prose 进入 schema 可验证对象：
+
+```text
+Profile + Policy + Adapter + Flow
+  -> print --dry-run
+  -> Run
+  -> Checkpoint
+  -> Artifact
+```
+
+对应文件：
+
+```text
+examples/profiles/huoban-open-source-project.yaml
+examples/policies/safe-defaults.yaml
+examples/adapters/grill-me-skill-md.yaml
+examples/flows/idea-to-spec-review.yaml
+examples/generated/idea-to-spec-review-dry-run.yaml
+examples/checkpoints/idea-to-spec-review-direction.yaml
+examples/artifacts/review-notes.yaml
+```
+
+验证命令：
+
+```bash
+npm run validate
+npm run explain
+npm run print:dry-run
+```
+
+## AI 不能做什么
+
+AI agent 不能：
+
+- 把 Markdown 指令文件直接当成可信 `Skill`，中间必须经过 `Adapter` 或人工审查。
+- 默认把公司规则提升为公共标准。
+- 因为存在 `Run` 就执行 flow。
+- 跳过涉及发布、修改 git 历史、访问密钥、花钱、改权限等副作用的 policy 审查。
+- 把本该进入 `Flow` 的逻辑藏在 prompt 里。
+- 发明 schema 里不存在的字段。
+
+## 在公司项目中怎么用
+
+在公司项目里，Huoban 应该作为标准化层，而不是私有意见堆。
+
+这些内容应该先留在公司项目内部：
+
+- 团队代码风格。
+- 领域语言。
+- 架构约束。
+- 风险规则。
+- 内部工具。
+- 公司特定 adapter。
+- 项目特定 flow。
+
+只有当某个模式满足以下条件时，才考虑反哺公共标准：
+
+- 在多个项目中重复出现。
+- 不依赖某一家公司的技术栈。
+- 对多个 runner 或 agent 有用。
+- 能表达成稳定协议对象。
+- 能被 example 和 schema 验证。
+
+## AI-Native 就绪标准
+
+当前仓库达到早期 AI-native 使用标准时，应满足：
+
+- `llms.txt` 指向正确事实来源。
+- 每个核心对象都有 schema 覆盖。
+- 示例能通过本地验证。
+- CLI 能解释 workspace。
+- `print --dry-run` 能在不执行 agent 的情况下生成 Run。
+- 公开文档清楚说明哪些属于标准，哪些属于私有 profile、policy、adapter 和 flow。
+
+Huoban 还没有完成。Phase 3 和 Phase 4 应该在真实公司项目里验证对象模型，再把重复出现的模式反馈给标准。

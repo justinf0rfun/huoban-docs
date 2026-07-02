@@ -1,0 +1,164 @@
+---
+title: "Profile 模型"
+sidebarTitle: "Profile 模型"
+description: "Profile 是 Huoban 的墨方：结构化、分层、可合并、可快照的上下文对象。"
+---
+
+# Profile 模型
+
+`Profile` 是 Huoban 的墨方。
+
+它负责把项目知识、团队习惯、架构约束、编码风格、风险偏好和历史决策注入到 AI 工作中。它不改变 skill 本身，但会改变同一个 skill 在不同项目中的判断重点。
+
+## Profile 不是普通规则文件
+
+现有生态里已经有很多上下文文件：
+
+- `AGENTS.md`
+- `CLAUDE.md`
+- Cursor Rules
+- 项目 prompt 文档
+- 团队 coding guidelines
+
+这些文件通常是单文件、自然语言、工具特定或项目特定的。
+
+Huoban 对它们的定位是：
+
+> AGENTS.md is a profile file. Huoban Profile is a profile object.
+
+也就是说，Huoban 不替代这些文件，而是把它们升级成标准对象：可分层、可合并、可校验、可导入导出、可进入 Run snapshot。
+
+## data 与 content
+
+Profile 应同时支持结构化字段和自然语言内容。
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Profile
+metadata:
+  name: huoban-open-source-project
+spec:
+  layers:
+    - name: architecture
+      data:
+        architectureStyle: spec-first
+        objectModel: declarative-resource
+      content: |
+        Prefer defining API objects before implementing runtime behavior.
+        Avoid turning Huoban into a workflow runner too early.
+```
+
+两者职责不同：
+
+| 字段 | 面向谁 | 作用 |
+| --- | --- | --- |
+| `data` | runtime / validator / policy | 合并、校验、冲突检测、explain、hash。 |
+| `content` | agent / LLM | 作为自然语言上下文影响判断。 |
+
+自然语言负责影响判断；结构化字段负责形成标准。
+
+## Layer
+
+Profile 使用 layer 表达上下文分层。
+
+常见 layer：
+
+- `style`：代码风格、改动粒度、测试习惯。
+- `architecture`：模块边界、依赖规则、设计约束。
+- `domain`：业务术语、不变量、合规要求。
+- `commands`：项目常用命令和验证方式。
+- `testing`：测试策略、覆盖要求、fixture 习惯。
+- `history`：ADR、历史迁移、拒绝过的方案。
+- `risk`：高风险操作、审批要求、禁止动作。
+
+示例：
+
+```yaml
+spec:
+  layers:
+    - name: style
+      data:
+        preferSmallChanges: true
+        testFirstForBugfixes: true
+      content: |
+        Prefer surgical changes. Do not refactor unrelated code.
+    - name: architecture
+      data:
+        boundaryStyle: ports-and-adapters
+      content: |
+        Domain logic should not depend on infrastructure adapters.
+```
+
+## 多 Profile 合并
+
+一个 Run 可以使用多个 Profile：
+
+```yaml
+profileRefs:
+  - name: global-style
+  - name: project-context
+  - name: strict-policy-mode
+  - name: run-overrides
+```
+
+推荐合并规则：
+
+- 按数组顺序应用。
+- 后者覆盖前者的同名 scalar 字段。
+- list 字段默认 append，除非明确声明 replace。
+- 同名 layer 合并。
+- 冲突写入 `status.conditions`。
+- 最终 effective profile 必须可解释、可 hash、可快照。
+
+## Flow 与 Run 中的 Profile
+
+`Flow` 可以声明默认 Profile：
+
+```yaml
+kind: Flow
+spec:
+  profileRefs:
+    - project-profile
+```
+
+`Run` 可以覆盖或追加 Profile：
+
+```yaml
+kind: Run
+spec:
+  profileRefs:
+    - project-profile
+    - strict-review-mode
+```
+
+最终以 Run snapshot 为准。
+
+## Profile 与 Policy 的边界
+
+Profile 影响 agent 判断，Policy 决定行为边界。
+
+不要把权限规则混进 Profile。比如“这个项目偏好小改动”属于 Profile；“写文件需要审批”属于 Policy。
+
+正确关系：
+
+```yaml
+kind: Profile
+spec:
+  policyRefs:
+    - standard-human-checkpoint-policy
+```
+
+Profile 可以引用 Policy，但不要和 Policy 混成同一个对象。
+
+## Import / Export
+
+Profile 是 Huoban 的第一条采用路径。
+
+```bash
+huoban import AGENTS.md --as Profile --out profiles/project.yaml
+huoban explain profiles/project.yaml
+huoban validate profiles/project.yaml
+huoban export profiles/project.yaml --to AGENTS.md
+```
+
+导入时必须保留原始文本，不能为了结构化而丢失上下文。

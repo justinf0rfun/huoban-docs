@@ -1,0 +1,253 @@
+---
+title: "快速开始"
+description: "安装 Huoban，运行 npm test、validate、explain 和 print dry-run，并验证核心 examples。"
+sidebarTitle: "快速开始"
+---
+
+# 快速开始
+
+本页给出当前仓库的最短验证路径。目标是确认本地 examples 能通过 schema 校验，CLI 能解释 workspace，并能从 Flow 生成 dry-run Run本页给出当前仓库的最短验证路径。目标是确认本地 examples 能通过 schema 校验，CLI 能解释 workspace，并能从 Flow 生成 dry-run Run。
+
+## 前置条件
+
+使用 Node.js 20 或 later。
+
+```bash
+node --version
+npm --version
+```
+
+## 1. 安装依赖
+
+```bash
+npm install
+```
+
+## 前置条件
+
+使用 Node.js 20 或 later。
+
+```bash
+node --version
+npm --version
+```
+
+## 1. 安装依赖
+
+```bash
+npm install
+```
+
+## 2. 运行完整检查2. 运行完整检查
+
+```bash
+npm test
+```
+
+```bash
+npm test
+```
+
+`npm test` 会重新生成确定性的 examples，验证所有 YAML 对象，解释 workspace，并检查生成文件是否漂移。`npm test` 会重新生成确定性的 examples，验证所有 YAML 对象，解释 workspace，并检查生成文件是否漂移。
+
+## 3. 验证所有 examples
+
+```bash
+npm run validate
+```
+
+验证单个对象：
+
+```bash
+npm exec -- huoban validate examples/flows/idea-to-spec-review.yaml
+```
+
+预期输出：
+
+```text
+✓ examples/flows/idea-to-spec-review.yaml: Flow/idea-to-spec-review
+```
+
+## 4. 解释 workspace
+
+```bash
+npm run explain
+```
+
+预期输出开头：
+
+```text
+Huoban Workspace
+  objects: 15
+  kinds: Adapter=1, Artifact=1, Checkpoint=1, Flow=1, Policy=2, Profile=3, Registry=1, Run=2, Skill=2, Trust=1
+  print process:
+```
+
+解释单个 Flow：
+
+```bash
+npm run explain:flow
+```
+
+## 5. 导入和导出 Profile
+
+## 3. 验证所有 examples
+
+```bash
+npm run validate
+```
+
+验证单个对象：
+
+```bash
+npm exec -- huoban validate examples/flows/idea-to-spec-review.yaml
+```
+
+预期输出：
+
+```text
+✓ examples/flows/idea-to-spec-review.yaml: Flow/idea-to-spec-review
+```
+
+## 4. 解释 workspace
+
+```bash
+npm run explain
+```
+
+预期输出开头：
+
+```text
+Huoban Workspace
+  objects: 15
+  kinds: Adapter=1, Artifact=1, Checkpoint=1, Flow=1, Policy=2, Profile=3, Registry=1, Run=2, Skill=2, Trust=1
+  print process:
+```
+
+解释单个 Flow：
+
+```bash
+npm run explain:flow
+```
+
+## 5. 导入和导出 Profile
+
+把 `AGENTS.md` 导入为 Huoban Profile把 `AGENTS.md` 导入为 Huoban Profile：
+
+```bash
+npm run import:profile
+```
+
+把 Huoban Profile 导出回 `AGENTS.md`：
+
+```bash
+npm run import:profile
+```
+
+把 Huoban Profile 导出回 `AGENTS.md`：
+
+```bash
+npm run export:agentsnpm run export:agents
+```
+
+从 Profile risk layer 派生 Policy：从 Profile risk layer 派生 Policy：
+
+```bash
+npm run derive:policy
+```
+
+## 6. 生成 dry-run Run
+
+```bash
+npm run print:dry-run
+```
+
+该命令基于 `examples/flows/idea-to-spec-review.yaml` 生成计划态 `Run`，不会执行 agent 工作。生成结果对应：
+
+```text
+examples/generated/idea-to-spec-review-dry-run.yaml
+```
+
+## 核心 examples
+
+优先阅读这组对象，它们组成一个可验证工作流：
+
+| 文件 | Kind | 作用 |
+| --- | --- | --- |
+| `examples/flows/idea-to-spec-review.yaml` | `Flow` | 定义从 idea 到 spec review 的 capability-first 编排。 |
+| `examples/profiles/huoban-open-source-project.yaml` | `Profile` | 注入项目上下文和设计哲学。 |
+| `examples/policies/safe-defaults.yaml` | `Policy` | 为高风险 side effects 设置审批或拒绝规则。 |
+| `examples/adapters/grill-me-skill-md.yaml` | `Adapter` | 把 `SKILL.md` 来源适配成 Huoban 能力。 |
+| `examples/runs/idea-to-spec-review-run.yaml` | `Run` | 记录一次 dry-run 执行快照。 |
+| `examples/checkpoints/idea-to-spec-review-direction.yaml` | `Checkpoint` | 在方向确认处建立人类决策边界。 |
+| `examples/artifacts/review-notes.yaml` | `Artifact` | 记录 run 产出的 review notes。 |
+
+## 下一步
+
+<CardGroup cols={2}>
+  <Card title="设计哲学" icon="blocks" href="/design-philosophy">
+    理解可排版、可润墨、可印刷的对象边界。
+  </Card>
+
+  <Card title="规范参考" icon="book-open" href="/spec-reference">
+    查看 `v1alpha1` 对象规范和字段约定。
+  </Card>
+
+  <Card title="示例总览" icon="file-code" href="/examples-overview">
+    从可验证 YAML examples 理解对象如何组合。
+  </Card>
+
+  <Card title="标准化路径" icon="route" href="/standardization">
+    理解哪些模式可以进入公共标准，哪些应留在私有 Profile、Policy、Adapter、Flow 和 Run 中。
+  </Card>
+</CardGroup>
+
+```bash
+npm run derive:policy
+```
+
+## 6. 生成 dry-run Run
+
+```bash
+npm run print:dry-run
+```
+
+该命令基于 `examples/flows/idea-to-spec-review.yaml` 生成计划态 `Run`，不会执行 agent 工作。生成结果对应：
+
+```text
+examples/generated/idea-to-spec-review-dry-run.yaml
+```
+
+## 核心 examples
+
+优先阅读这组对象，它们组成一个可验证工作流：
+
+| 文件 | Kind | 作用 |
+| --- | --- | --- |
+| `examples/flows/idea-to-spec-review.yaml` | `Flow` | 定义从 idea 到 spec review 的 capability-first 编排。 |
+| `examples/profiles/huoban-open-source-project.yaml` | `Profile` | 注入项目上下文和设计哲学。 |
+| `examples/policies/safe-defaults.yaml` | `Policy` | 为高风险 side effects 设置审批或拒绝规则。 |
+| `examples/adapters/grill-me-skill-md.yaml` | `Adapter` | 把 `SKILL.md` 来源适配成 Huoban 能力。 |
+| `examples/runs/idea-to-spec-review-run.yaml` | `Run` | 记录一次 dry-run 执行快照。 |
+| `examples/checkpoints/idea-to-spec-review-direction.yaml` | `Checkpoint` | 在方向确认处建立人类决策边界。 |
+| `examples/artifacts/review-notes.yaml` | `Artifact` | 记录 run 产出的 review notes。 |
+
+## 下一步
+
+<CardGroup cols={2}>
+  <Card title="设计哲学" icon="blocks" href="/design-philosophy">
+    理解可排版、可润墨、可印刷的对象边界。
+  </Card>
+
+  <Card title="规范参考" icon="book-open" href="/spec-reference">
+    查看 `v1alpha1` 对象规范和字段约定。
+  </Card>
+
+  <Card title="示例总览" icon="file-code" href="/examples-overview">
+    从可验证 YAML examples 理解对象如何组合。
+  </Card>
+
+  <Card title="标准化路径" icon="route" href="/standardization">
+    理解哪些模式可以进入公共标准，哪些应留在私有 Profile、Policy、Adapter、Flow 和 Run 中。
+  </Card>
+</CardGroup>

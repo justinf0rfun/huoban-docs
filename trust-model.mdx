@@ -1,0 +1,188 @@
+---
+title: "信任模型"
+sidebarTitle: "信任模型"
+description: "Huoban 的 trust、policy、side effects、checkpoint 和 sandbox 边界。"
+---
+
+# 信任模型
+
+Huoban 编排的是会影响代码、文件、网络、凭据、发布动作和成本的 AI 能力。
+
+因此信任模型必须从第一版写入标准。即使签名、provenance、trust graph 等机制后续实现，方向也不能后补。
+
+## 基本原则
+
+1. 外部 Skill / Adapter 默认不可信。
+2. Trust 不是单个字段，而是 source、version、signature、policy、sandbox、review 的组合。
+3. `declaredSideEffects` 是声明，不等于验证。
+4. `observedSideEffects` 是审计材料，不等于预防机制。
+5. Policy 决定 allow / deny / requireApproval。
+6. Checkpoint 是人工信任边界。
+7. Sandbox 是执行边界。
+
+## Trust 的组成
+
+```yaml
+trust:
+  source:
+    type: git
+    url: https://github.com/example/skills
+  version: v0.3.1
+  signature:
+    status: unknown
+  review:
+    required: true
+    reviewedBy: null
+  sandbox:
+    required: true
+  level: untrusted
+```
+
+`level` 不应单独决定安全。它只是综合状态的摘要。
+
+## Side Effects
+
+Huoban 区分可能副作用和实际副作用。
+
+### declaredSideEffects
+
+由 Skill 或 Adapter 声明：
+
+```yaml
+sideEffects:
+  declared:
+    - readFile
+    - writeFile
+    - executeCommand
+```
+
+用于计划、审批和 policy 判断。
+
+### observedSideEffects
+
+由 Run 记录：
+
+```yaml
+status:
+  observedSideEffects:
+    - type: writeFile
+      target: docs/profile-model.mdx
+      stage: update-docs
+      time: "2026-06-23T12:00:00Z"
+```
+
+用于审计、复盘和异常检测。
+
+如果 observed 超出 declared，应生成：
+
+```yaml
+conditions:
+  - type: UndeclaredSideEffectObserved
+    status: "True"
+    reason: RuntimeObservedUnexpectedWrite
+    message: "Adapter wrote a file not declared in sideEffects."
+```
+
+## 标准副作用词表
+
+第一版可包含：
+
+- `readFile`
+- `writeFile`
+- `deleteFile`
+- `executeCommand`
+- `modifyGitIndex`
+- `modifyGitHistory`
+- `networkAccess`
+- `sendMessage`
+- `publishRemote`
+- `spendMoney`
+- `accessSecret`
+- `installDependency`
+- `changePermission`
+- `unknown`
+
+`unknown` 必须保守处理。
+
+## Policy
+
+Policy 是印坊规矩。
+
+它不描述项目上下文，而是定义行为边界。
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Policy
+metadata:
+  name: standard-human-checkpoint-policy
+spec:
+  rules:
+    - effect: requireApproval
+      when:
+        sideEffects:
+          - writeFile
+          - executeCommand
+    - effect: deny
+      when:
+        sideEffects:
+          - modifyGitHistory
+          - accessSecret
+```
+
+Policy 应以 side effect 和 capability 为中心，而不是以具体命令为中心。
+
+## Checkpoint
+
+Checkpoint 是高风险动作前的人工或规则确认。
+
+常见触发条件：
+
+- Policy 要求审批。
+- Adapter 未被信任。
+- Side effects 为 unknown。
+- Eval 失败。
+- Profile 合并冲突。
+- Run 即将发布远程内容。
+
+Checkpoint 允许的动作：
+
+- `approve`
+- `requestChanges`
+- `reject`
+- `skip`
+- `abort`
+
+## Sandbox
+
+Sandbox 是执行隔离边界。
+
+Huoban 标准不需要第一版规定某个具体沙箱实现，但必须让 runtime 声明自己是否提供：
+
+- 文件系统隔离。
+- 网络隔离。
+- 环境变量过滤。
+- Secret 访问限制。
+- Git 写入限制。
+- 外部命令限制。
+
+## 默认信任规则
+
+推荐默认规则：
+
+- 本地用户手写对象：`reviewed`，但仍受 Policy 约束。
+- 外部 `SKILL.md` 导入：`untrusted`。
+- 外部 registry 来源：`untrusted`，除非有签名和 review。
+- Side effects unknown：必须 checkpoint。
+- 涉及 secret、remote publish、money、git history：默认 require approval 或 deny。
+
+## 不做什么
+
+v0.1 不需要实现完整：
+
+- hosted trust graph
+- package signing
+- provenance verification
+- SBOM-like metadata
+- public registry trust scoring
+
+但文档必须先定义这些方向，避免生态先扩散、后补安全。

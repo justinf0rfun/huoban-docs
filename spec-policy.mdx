@@ -1,0 +1,87 @@
+---
+title: "Policy 对象"
+sidebarTitle: "Policy"
+description: "Policy 是 Huoban 的权限和副作用规则对象，按 capability 与 side effect 控制执行边界。"
+---
+
+# Policy 对象
+
+`Policy` 是 Huoban 的印坊规矩：它决定什么允许、什么禁止、什么必须经过审批。
+
+Policy 必须与 Profile 分离。Profile 影响判断，Policy 控制行为边界。
+
+## 规则中心
+
+Policy 不应主要按具体命令匹配，例如 `git push` 或 `rm -rf`。核心规则应围绕：
+
+- capability
+- side effect
+- trust level
+- runtime mode
+- artifact type
+- checkpoint requirement
+
+## spec 字段
+
+| 字段 | 要求 | 说明 |
+| --- | --- | --- |
+| `rules` | 必填 | 策略规则数组。 |
+| `rules[].effect` | 必填 | `allow`、`deny`、`requireApproval`。 |
+| `rules[].when` | 必填 | 匹配条件。 |
+| `defaults` | 可选 | 默认行为，例如 unknown side effect 是否拒绝。 |
+| `severity` | 可选 | 风险等级。 |
+
+## side effects
+
+标准 side effects 包括：
+
+- `readFile`
+- `writeFile`
+- `deleteFile`
+- `executeCommand`
+- `modifyGitIndex`
+- `modifyGitHistory`
+- `networkAccess`
+- `sendMessage`
+- `publishRemote`
+- `spendMoney`
+- `accessSecret`
+- `installDependency`
+- `changePermission`
+
+## 最小示例
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Policy
+metadata:
+  name: safe-defaults
+spec:
+  defaults:
+    unknownSideEffect: requireApproval
+  rules:
+    - effect: requireApproval
+      when:
+        sideEffects:
+          - publishRemote
+          - spendMoney
+          - accessSecret
+    - effect: deny
+      when:
+        sideEffects:
+          - modifyGitHistory
+```
+
+## status
+
+常见 conditions：
+
+- `PolicyValidated`
+- `PolicyApplied`
+- `ApprovalRequired`
+- `PolicyDenied`
+- `UndeclaredSideEffectObserved`
+
+## 设计约束
+
+`declaredSideEffects` 是声明，不等于事实。runtime 还必须记录 `observedSideEffects`，并在超出声明时触发 condition。

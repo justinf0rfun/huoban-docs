@@ -1,0 +1,74 @@
+---
+title: "Checkpoint 对象"
+sidebarTitle: "Checkpoint"
+description: "Checkpoint 是 Huoban 的校对对象，用于暂停、审查、批准、拒绝或修改一次 AI 工作。"
+---
+
+# Checkpoint 对象
+
+`Checkpoint` 是 Huoban 的校对点。它表示 runtime 不能或不应该继续自动执行，需要人、规则或 eval 给出明确结果。
+
+Checkpoint 是 AI 编排里的信任边界，不只是 UI 上的确认按钮。
+
+## 触发来源
+
+Checkpoint 可以由多种来源触发：
+
+- Flow 明确声明。
+- Policy 要求审批。
+- Eval 失败。
+- side effect 超出声明。
+- runtime 无法解析能力绑定。
+- 用户主动暂停。
+
+## spec 字段
+
+| 字段 | 要求 | 说明 |
+| --- | --- | --- |
+| `runRef` | 必填 | 对应的 Run。 |
+| `stage` | 可选 | 对应 stage id。 |
+| `reason` | 必填 | 触发原因。 |
+| `requiredActions` | 可选 | 允许的动作，例如 approve、reject、revise。 |
+| `artifactRefs` | 可选 | 待审查的产物。 |
+| `expiresAt` | 可选 | 超时策略。 |
+
+## 最小示例
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Checkpoint
+metadata:
+  name: review-flow-boundary
+spec:
+  runRef:
+    name: idea-to-spec-review-20260623
+  stage: sharpen-idea
+  reason: HumanDesignDecisionRequired
+  requiredActions:
+    - approve
+    - requestChanges
+    - reject
+  artifactRefs:
+    - name: review-notes
+```
+
+## status
+
+常见 phase：
+
+- `Pending`
+- `Approved`
+- `Rejected`
+- `ChangesRequested`
+- `Expired`
+
+常见 conditions：
+
+- `CheckpointRequired`
+- `CheckpointApproved`
+- `CheckpointRejected`
+- `CheckpointExpired`
+
+## 设计约束
+
+Checkpoint 结果必须进入 Run 的状态和快照记录。一次审批不能只是聊天里的口头同意，否则 Run 无法审计。

@@ -1,0 +1,71 @@
+---
+title: "Skill 对象"
+sidebarTitle: "Skill"
+description: "Skill 是 Huoban 的原子能力对象，声明 capability、输入输出、上下文需求和副作用。"
+---
+
+# Skill 对象
+
+`Skill` 是 Huoban 的活字：一个可复用、可移动、可排列的原子能力。
+
+Skill 不应该绑定具体项目上下文。项目差异由 `Profile` 注入，执行差异由 `Run` 和 `Binding` 决定。
+
+## 语义
+
+Skill 用于声明：
+
+- 它提供哪些 `capabilities`。
+- 接受哪些输入，产生哪些输出。
+- 需要哪些上下文或工具。
+- 可能产生哪些 declared side effects。
+- 是否天然需要 checkpoint。
+
+## spec 字段
+
+| 字段 | 要求 | 说明 |
+| --- | --- | --- |
+| `capabilities` | 必填 | Skill 满足的能力命名空间，例如 `huoban.dev/designReview`。 |
+| `inputs` | 可选 | 输入 schema 或输入引用。 |
+| `outputs` | 可选 | 输出 schema 或 artifact 类型。 |
+| `profileHints` | 可选 | 推荐注入的 Profile layer 类型。 |
+| `sideEffects.declared` | 必填 | 可能产生的副作用声明。 |
+| `checkpoint` | 可选 | 是否建议在执行前后触发校对。 |
+| `adapterRef` | 可选 | 如果来自外部生态，指向对应 Adapter。 |
+
+## 最小示例
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Skill
+metadata:
+  name: design-review
+spec:
+  capabilities:
+    - huoban.dev/designReview
+  inputs:
+    - name: proposal
+      type: markdown
+  outputs:
+    - name: review
+      artifactType: decision-notes
+  sideEffects:
+    declared:
+      - readFile
+      - writeFile
+  checkpoint:
+    required: true
+    reason: human-design-decision
+```
+
+## status
+
+Skill 通常是声明对象，不一定需要 status。由 registry 或 runtime 管理时，可以写入：
+
+- `SkillIndexed`
+- `SkillValidated`
+- `TrustResolved`
+- `CapabilityMapped`
+
+## 设计约束
+
+Skill 应尽量无状态。不要把项目规则、团队偏好、执行日志或一次运行的产物写进 Skill。

@@ -1,0 +1,152 @@
+---
+title: "Huoban 活板设计哲学"
+sidebarTitle: "设计哲学"
+description: "Huoban 活板的设计哲学来自活字印刷术：可排版、可润墨、可印刷。"
+---
+
+# Huoban 活板：Huoban 活板：设计哲学 Huoban 活板设计哲学
+
+Huoban 活板活板的设计哲学来自活字印刷术。 Huoban 活板 的设计哲学来自活字印刷术。
+
+Huoban 是 AI 系统的开放编排协议：可排版、可润墨、可印刷。
+
+活字印刷术的突破不在于“有字”。字早就存在。真正的突破在于：字可以被标准化、收纳、选择、排布、润墨、试印、校对、印刷、拆版、复用。
+
+“活板”是这个隐喻的核心：不是把 AI 能力固定成一整块雕版，而是把 skill、context、flow、checkpoint、policy 和 artifact 做成可以拆开、重排、润墨、校对、复印的开放编排结构。
+
+Huoban 把同样的思想应用到 AI 系统：把能力、上下文、编排、执行快照、校对、权限和产物拆成可以验证、组合、迁移和审查的标准对象。
+
+## 核心判断
+
+AI 原生工作可以被理解为一套排印流程：
+
+- `Skill` 是活字：原子、独立、可复用。
+- `Profile` 是墨方：分层上下文，不改变活字本身，但改变判断标准和输出重点。
+- `Flow` 是版式：为当前任务安排 capability、stage、checkpoint 和 artifact。
+- `Run` 是锁版印刷：一次具体执行中的锁定快照。
+- `Checkpoint` 是校对：人或系统判断是否继续、修改或拒绝。
+- `Policy` 是印坊规矩：声明副作用、审批和权限边界。
+- `Adapter` 是异形活字转接件：把外部能力或导入格式标准化成可编排对象。
+
+Huoban 的目标，是让 AI 工作变得明确、可编程、可检查、可复用、可分享。
+
+## 对象映射
+
+| Huoban 对象 | 活字印刷对应物 | 设计含义 |
+| --- | --- | --- |
+| `Skill` | 活字 | 原子能力，可被不同 flow 反复选择和重排。 |
+| `Profile` | 墨方 | 团队、项目、架构、领域、风格、历史和风险上下文。 |
+| `Flow` | 版式 | 能力之间的顺序、输入输出、停顿和产物。 |
+| `Run` | 锁版印刷 | 冻结 Flow、Profile、Policy 和 binding 的一次执行快照。 |
+| `Checkpoint` | 校对 | 高判断力或高风险节点的人工或系统决策边界。 |
+| `Policy` | 印坊规矩 | 自动化边界、审批规则和危险动作限制。 |
+| `Artifact` | 印张 | 代码 diff、文档、报告、决策记录等产物。 |
+| `Registry` | 字架 | 组织、索引和发现可用对象。 |
+| `Trust` | 审校记录 | 记录来源、审查、信任等级和 sandbox 要求。 |
+
+## Skill 是活字
+
+一个好的 `Skill` 应该像一枚规整的活字：
+
+- 能被单独识别。
+- 能被放进不同版式。
+- 不偷偷携带某个项目的上下文。
+- 不隐藏输入、输出和副作用。
+- 能说明自己是否会读文件、写文件、执行命令、访问网络、花钱、发布远端变更或访问密钥。
+
+示例：
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Skill
+metadata:
+  name: design-review
+spec:
+  capabilities:
+    - huoban.dev/designReview
+  inputs:
+    - name: proposal
+      type: markdown
+  outputs:
+    - name: review
+      artifactType: decision-notes
+  sideEffects:
+    declared:
+      - readFile
+      - writeFile
+```
+
+## Flow 是版式
+
+`Flow` 不只是 stage 列表。它描述一次工作应该如何排版：
+
+- 这次任务需要哪些 capability？
+- 哪个 stage 先运行，哪个后运行？
+- 上一步产物如何传给下一步？
+- 哪些位置必须 checkpoint？
+- 使用哪一组 Profile 和 Policy？
+
+示例：
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Flow
+metadata:
+  name: idea-to-spec-review
+spec:
+  profileRefs:
+    - name: huoban-open-source-project
+  policyRefs:
+    - name: safe-defaults
+  stages:
+    - id: sharpen-idea
+      requires:
+        capability: huoban.dev/designReview
+        role: primary-review
+  checkpoints:
+    - after: sharpen-idea
+      type: humanApproval
+      required: true
+      reason: ConfirmDirectionBeforeSpec
+```
+
+## Context 是润墨
+
+同一枚活字，用不同墨色印出来，字形没变，但气质和用途变了。同一个 skill，在不同上下文里运行，能力没变，但判断标准变了。
+
+这就是 `Profile` 的位置。项目语言、架构边界、领域术语、历史决策、测试习惯和风险规则，都应该作为运行时上下文显式注入，而不是散落在临时 prompt 或聊天历史里。
+
+## Checkpoint 是校对
+
+自动化必须有边界。`Checkpoint` 让关键判断点显式出现：
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Checkpoint
+metadata:
+  name: idea-to-spec-review-001-direction
+spec:
+  runRef:
+    name: idea-to-spec-review-001
+  stage: sharpen-idea
+  reason: ConfirmDirectionBeforeSpec
+  requiredActions:
+    - approve
+    - requestChanges
+    - reject
+```
+
+## 设计原则
+
+1. 标准化活字，不标准化文章。
+2. Skill 尽量无状态。
+3. Context 是运行时层。
+4. 副作用必须可见。
+5. 校对是一等能力。
+6. 优先适配现有能力，不急着替代已有生态。
+7. Flow 也应该可分享。
+8. 文化隐喻必须进入结构，而不是停留在命名和文案上。
+
+## 一句话定位
+
+Huoban 是 AI 系统的开放编排协议：可排版、可润墨、可印刷。

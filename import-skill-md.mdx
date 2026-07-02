@@ -1,0 +1,127 @@
+---
+title: "导入 SKILL.md"
+sidebarTitle: "导入 SKILL.md"
+description: "把现有 SKILL.md 适配成 Huoban Adapter 或 Skill 对象。"
+---
+
+# 导入 SKILL.md
+
+`SKILL.md` 是现有 AI skill 生态的重要载体。
+
+但大多数 `SKILL.md` 并没有声明完整的输入输出 schema、capability、side effects、checkpoint behavior 和 trust metadata。因此 Huoban 不应该把它们直接视为原生 Skill，而应该默认导入为 `Adapter`。
+
+## 定位
+
+```text
+SKILL.md = natural-language capability description
+Huoban Adapter = standardization boundary
+Huoban Skill = normalized movable type
+```
+
+Adapter 的职责不是“帮忙调用一下”，而是把异形活字磨成标准活字。
+
+## 命令
+
+```bash
+huoban import path/to/SKILL.md --as Adapter --out adapters/grill-me.yaml
+```
+
+## 导入结果
+
+导入应生成：
+
+- `Adapter`：外部 skill 的标准化包装。
+- 可选 `Skill`：被 Adapter 标准化后的能力声明。
+- `capabilities`：可推断，但必须标记 review required。
+- `sideEffects`：无法确定时标记 unknown。
+- `content`：保留原始 SKILL.md。
+- `conditions`：写入 `ImportNeedsReview`。
+
+## 示例
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Adapter
+metadata:
+  name: mattpocock-grill-me-adapter
+spec:
+  source:
+    type: skill-md
+    path: skills/grill-me/SKILL.md
+  provides:
+    capabilities:
+      - huoban.dev/designReview
+      - huoban.dev/planning
+  inputMapping:
+    mode: prompt-prefix
+  outputMapping:
+    artifactKind: ReviewNotes
+  sideEffects:
+    declared:
+      - unknown
+  checkpointBehavior:
+    default: required
+  trust:
+    level: untrusted
+    reviewRequired: true
+status:
+  conditions:
+    - type: ImportNeedsReview
+      status: "True"
+      reason: SideEffectsUnknown
+      message: "Imported SKILL.md does not declare side effects explicitly."
+```
+
+## 为什么默认 Adapter
+
+外部 skill 可能：
+
+- 依赖某个工具生态。
+- 含有隐藏前置条件。
+- 没有结构化输入输出。
+- 会读取或修改文件。
+- 需要人工交互。
+- 对上下文有隐含假设。
+
+直接把它标记为 Huoban 原生 Skill 会制造虚假的安全感。
+
+## 什么时候可以生成 Skill
+
+只有当 Adapter 补齐以下信息后，才可以生成或提升为标准 `Skill`：
+
+- `capabilities`
+- `inputSchema`
+- `outputSchema`
+- `declaredSideEffects`
+- `checkpointBehavior`
+- `contextRequirements`
+- `versionCompatibility`
+- `trust` metadata
+
+## 与 Policy 的关系
+
+如果 `sideEffects` 是 unknown，Policy 应保守处理：
+
+```yaml
+rules:
+  - effect: requireApproval
+    when:
+      sideEffects:
+        - unknown
+```
+
+外部 skill 默认不可信，必须经过 review 才能提升 trust level。
+
+## 适配优先于重写
+
+Huoban 早期不应该重造所有 skill。
+
+更好的路线是：
+
+1. 导入已有 `SKILL.md`。
+2. 生成 Adapter。
+3. 补齐 capability 和 side effects。
+4. 通过 review 提升可信度。
+5. 在 Flow 中按 capability 使用。
+
+这会让 Huoban 站在已有生态之上，而不是从零建设孤岛。

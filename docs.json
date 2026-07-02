@@ -1,0 +1,139 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Huoban",
+  "colors": {
+    "primary": "#16A34A",
+    "light": "#22C55E",
+    "dark": "#15803D"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "pages": [
+      {
+        "group": "Getting Started",
+        "pages": [
+          "index",
+          "quickstart"
+        ]
+      }
+    ],
+    "groups": [
+      {
+        "group": "开始使用",
+        "pages": [
+          "index",
+          "quickstart",
+          "vision-and-strategy"
+        ],
+        "icon": "rocket"
+      },
+      {
+        "group": "核心概念",
+        "icon": "boxes",
+        "pages": [
+          "design-philosophy",
+          "object-model",
+          "profile-model",
+          "flow-model",
+          "ai-native"
+        ]
+      },
+      {
+        "group": "规范参考",
+        "icon": "book-open",
+        "pages": [
+          "spec-reference",
+          "spec-skill",
+          "spec-profile",
+          "spec-flow",
+          "spec-run",
+          "spec-checkpoint",
+          "spec-policy",
+          "spec-adapter",
+          "spec-artifact",
+          "spec-registry",
+          "spec-trust"
+        ]
+      },
+      {
+        "group": "迁移指南",
+        "icon": "git-branch",
+        "pages": [
+          "import-agents-md",
+          "import-claude-md",
+          "import-cursor-rules",
+          "import-skill-md"
+        ]
+      },
+      {
+        "group": "示例",
+        "icon": "file-code",
+        "pages": [
+          "examples-overview",
+          "example-import-agents-profile",
+          "example-idea-to-spec-review",
+          "example-skill-md-adapter"
+        ]
+      },
+      {
+        "group": "标准与治理",
+        "icon": "shield-check",
+        "pages": [
+          "conformance",
+          "trust-model",
+          "roadmap",
+          "standardization"
+        ]
+      },
+      {
+        "group": "开源项目",
+        "icon": "landmark",
+        "pages": [
+          "contributing-governance",
+          "security",
+          "changelog",
+          "glossary",
+          "faq"
+        ]
+      }
+    ]
+  },
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Support",
+        "href": "mailto:hi@mintlify.com"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Dashboard",
+      "href": "https://app.mintlify.com"
+    }
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      "perplexity",
+      "mcp",
+      "cursor",
+      "vscode"
+    ]
+  },
+  "footer": {
+    "socials": {
+      "x": "https://x.com/mintlify",
+      "github": "https://github.com/mintlify",
+      "linkedin": "https://linkedin.com/company/mintlify"
+    }
+  },
+  "description": "Huoban 是 AI 系统的开放编排协议：可排版、可润墨、可印刷。"
+}

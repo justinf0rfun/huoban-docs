@@ -1,0 +1,77 @@
+---
+title: "安全策略"
+sidebarTitle: "安全策略"
+description: "Huoban 的早期安全边界、报告方式，以及 Policy、Trust、Checkpoint、Run 的安全模型。"
+icon:
+  name: "shield-alert"
+  library: "lucide"
+---
+
+# 安全策略
+
+Huoban 当前是早期协议和本地 CLI 项目。它不运行远程服务，不托管 registry，也不执行 agent workflow。
+
+## 支持版本
+
+| Version | Supported |
+| --- | --- |
+| `0.1.x` | Experimental |
+
+## 报告安全问题
+
+现阶段，请不要在公开 issue、examples 或协议反馈中包含 secrets、生产数据、私有仓库内容或 credentials。
+
+如果你发现 CLI 或 schemas 中的安全敏感问题，请通过仓库 owner 私下报告。在公开安全联系人建立前，避免发布 exploit details。
+
+## 安全模型
+
+Huoban 把 side effects 视为协议数据，而不是隐藏在执行过程中的实现细节。
+
+- `Policy` 定义 approval 和 denial rules。
+- `Trust` 记录来源和 review metadata。
+- `Checkpoint` 创建校对边界。
+- `Run` 记录 planned execution snapshot。
+
+当前 CLI 负责验证和解释对象。它不授予权限，不执行任意工具，也不在 runtime 层强制 sandbox。
+
+## 示例 Policy
+
+`examples/policies/safe-defaults.yaml` 展示了安全默认值：
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Policy
+metadata:
+  name: safe-defaults
+spec:
+  defaults:
+    unknownSideEffect: requireApproval
+  rules:
+    - effect: requireApproval
+      when:
+        sideEffects:
+          - publishRemote
+          - spendMoney
+          - accessSecret
+    - effect: deny
+      when:
+        sideEffects:
+          - modifyGitHistory
+```
+
+这意味着未知副作用默认需要审批，发布远端变更、花钱和访问密钥需要审批，修改 git 历史默认拒绝。
+
+## 验证命令
+
+```bash
+npm run validate
+npm run explain
+```
+
+如果修改 Profile、Policy 或 adapter 行为，还应运行：
+
+```bash
+npm run import:profile
+npm run derive:policy
+npm run export:agents
+```

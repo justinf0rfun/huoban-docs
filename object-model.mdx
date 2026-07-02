@@ -1,0 +1,177 @@
+---
+title: "对象模型"
+sidebarTitle: "对象模型"
+description: "Huoban 的声明式资源对象模型、核心对象、扩展对象和状态边界。"
+---
+
+# 对象模型
+
+Huoban 的核心资产是对象模型。
+
+它不从“如何执行命令”开始，而是从“如何描述 AI 原生工作”开始。执行器、MCP server、CLI、IDE 插件和 agent runtime 都可以实现 Huoban，但它们不应该反过来定义 Huoban。
+
+## 基本结构
+
+Huoban 对象采用声明式资源对象模型：
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Flow
+metadata:
+  name: idea-to-spec-review
+spec:
+  ...
+status:
+  ...
+```
+
+字段语义：
+
+| 字段 | 作用 |
+| --- | --- |
+| `apiVersion` | 对象 API 版本，例如 `huoban.dev/v1alpha1`。 |
+| `kind` | 对象类型，例如 `Skill`、`Profile`、`Flow`、`Run`。 |
+| `metadata` | 名称、标签、版本、generation、来源等元信息。 |
+| `spec` | 用户声明的期望状态。 |
+| `status` | runtime 观察到的实际状态。 |
+
+## Core API Objects
+
+Core 对象是最小 Huoban runtime 必须理解的对象。
+
+### Skill
+
+`Skill` 是可复用的原子能力。
+
+它声明自己能做什么、输入输出是什么、需要什么上下文、可能产生什么副作用，以及是否天然需要 checkpoint。
+
+### Profile
+
+`Profile` 是分层上下文对象。
+
+它把 `AGENTS.md`、`CLAUDE.md`、Cursor Rules、团队规范和项目知识升级成可合并、可校验、可快照的上下文层。
+
+### Flow
+
+`Flow` 是能力编排版式。
+
+它描述 stage、capability、输入输出、checkpoint、artifact、policy 以及 profile 默认引用。
+
+### Run
+
+`Run` 是一次具体执行。
+
+Run 必须锁定当时使用的 Flow、Profile、Skill binding 和 Policy 快照，确保执行可复盘、可审计、可解释。
+
+### Checkpoint
+
+`Checkpoint` 是校对点。
+
+它表示 runtime 不能或不应该继续自动执行，需要人或规则确认、修改、拒绝或回退。
+
+## Standard Extension Objects
+
+Huoban v0.1 应定义完整对象宇宙，但通过兼容等级降低实现门槛。
+
+扩展对象包括：
+
+- `Artifact`：一次 Run 产生的代码、文档、报告、diff 或决策记录。
+- `Adapter`：把外部 skill、MCP tool 或上下文文件等外部能力转成 Huoban 兼容对象。
+- `Policy`：权限、副作用、审批和风险规则。
+- `Eval`：可重复执行的校样标准。
+- `Registry`：字架，用于组织和发现 Skill / Adapter / Flow。
+- `Context`：运行时上下文材料或引用。
+- `Permission`：更细粒度的能力授权。
+- `Tool`：可被 runtime 调用的外部工具描述。
+- `Resource`：可被 agent 读取的上下文资源。
+- `Prompt`：可复用的提示模板。
+- `Runtime`：执行环境声明。
+- `Binding`：capability 到具体 skill 或 adapter 的解析结果。
+- `Trust`：来源、签名、审计、review 和 sandbox 的信任信息。
+
+## spec 与 status
+
+Huoban 必须保持 `spec` 与 `status` 的边界。
+
+用户、作者或上游系统写 `spec`：
+
+```yaml
+spec:
+  profileRefs:
+    - project-profile
+  stages:
+    - id: review
+      requires:
+        capability: huoban.dev/designReview
+```
+
+runtime 写 `status`：
+
+```yaml
+status:
+  phase: WaitingForCheckpoint
+  observedGeneration: 2
+  conditions:
+    - type: CheckpointRequired
+      status: "True"
+      reason: HumanReviewRequired
+```
+
+不要把运行日志、临时结果、执行命令、artifact 内容和用户期望混进同一个字段。
+
+## generation 与 observedGeneration
+
+Huoban 对象应支持：
+
+```yaml
+metadata:
+  generation: 3
+status:
+  observedGeneration: 2
+```
+
+语义：
+
+- `metadata.generation` 在 `spec` 发生语义变化时递增。
+- `status.observedGeneration` 表示当前 status 对应哪个 generation。
+- 如果二者不一致，说明 runtime 状态还没有追上当前 spec。
+
+这能避免用户修改 Flow 或 Profile 后误读旧状态。
+
+## Conditions
+
+`conditions` 是 Huoban 的一等状态表达。
+
+建议条件类型包括：
+
+- `SkillResolved`
+- `ProfileResolved`
+- `FlowValidated`
+- `PolicyChecked`
+- `AdapterBound`
+- `RunPlanned`
+- `StageStarted`
+- `StageCompleted`
+- `ArtifactProduced`
+- `EvalPassed`
+- `EvalFailed`
+- `CheckpointRequired`
+- `CheckpointApproved`
+- `RunCompleted`
+- `RunFailed`
+- `ProfileConflictDetected`
+- `UndeclaredSideEffectObserved`
+
+## 不做过程式脚本
+
+核心对象模型不应暴露太多执行命令：
+
+```yaml
+run: claude -p "..."
+shell: ...
+command: ...
+```
+
+这些字段可以存在于 Adapter 或 runtime-specific extension 中，但不应成为核心 spec 的中心。
+
+Huoban 要描述“期望的 AI 工作结构”，而不是把自己变成 CI 脚本格式。

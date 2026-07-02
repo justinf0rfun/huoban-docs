@@ -1,0 +1,56 @@
+---
+title: "术语表"
+sidebarTitle: "术语表"
+description: "Huoban 的核心术语、活板隐喻和英文对象名对照。"
+---
+
+# 术语表
+
+术语表用于固定 Huoban 的公共语言，避免文档、spec、示例和社区讨论各说各话。
+
+## 品牌与哲学
+
+| 术语 | 英文/对象名 | 定义 |
+| --- | --- | --- |
+| Huoban 活板 | Huoban | AI 系统的开放编排协议，设计哲学来自活字印刷术。 |
+| 可排版 | Composable layout | AI 能力可以被取出、组合、排序、替换和检查。 |
+| 可润墨 | Context injection | 上下文像墨方一样注入能力，改变判断重点而不改变能力本体。 |
+| 可印刷 | Reproducible run | 一次 AI 工作可以被描述、锁定、执行、校对、归档和复盘。 |
+
+## 对象术语
+
+| 活板隐喻 | Huoban 对象 | 定义 |
+| --- | --- | --- |
+| 活字 | `Skill` | 原子能力，可复用、可移动、可排列。 |
+| 墨方 | `Profile` | 分层上下文对象。 |
+| 版式 | `Flow` | 能力排列与传递关系。 |
+| 锁版印刷 | `Run` | 一次冻结依赖后的具体执行。 |
+| 校对 | `Checkpoint` | 人或系统确认是否继续。 |
+| 印坊规矩 | `Policy` | 权限、副作用、风险和审批规则。 |
+| 异形活字转接件 | `Adapter` | 把外部能力标准化成 Huoban 对象。 |
+| 字架 | `Registry` | 存放、索引和发现对象的地方。 |
+| 校样 | `Eval` | 可重复执行的质量判断。 |
+| 印件 | `Artifact` | 一次 Run 产生的可审查产物。 |
+| 信任印记 | `Trust` | 来源、审查、签名、sandbox 和 policy 元数据。 |
+
+## 标准术语
+
+| 术语 | 定义 |
+| --- | --- |
+| `apiVersion` | 对象 API 版本，例如 `huoban.dev/v1alpha1`。 |
+| `kind` | 对象类型。 |
+| `metadata` | 名称、标签、generation、来源等元信息。 |
+| `spec` | 用户或上游系统声明的期望状态。 |
+| `status` | runtime 观察到的实际状态。 |
+| `conditions` | 细粒度状态数组。 |
+| `generation` | spec 发生语义变化时递增的版本号。 |
+| `observedGeneration` | runtime 当前 status 对应的 generation。 |
+| `declaredSideEffects` | Skill / Adapter 声明可能产生的副作用。 |
+| `observedSideEffects` | Run 实际观测到的副作用。 |
+
+## 命名原则
+
+- API 对象使用英文：`Skill`、`Profile`、`Flow`、`Run`。
+- 文化叙事使用中文活板隐喻：活字、墨方、版式、校对、印刷。
+- 不在 schema 中使用拼音对象名。
+- 文档首次出现对象时，尽量同时给出隐喻和对象名。

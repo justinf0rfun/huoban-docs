@@ -1,0 +1,63 @@
+---
+title: "Trust 对象"
+sidebarTitle: "Trust"
+description: "Trust 是 Huoban 的信任元数据对象，描述来源、审查、签名、sandbox 和风险边界。"
+---
+
+# Trust 对象
+
+`Trust` 描述一个 Skill、Adapter、Registry source 或 Artifact 的信任信息。
+
+所有外部能力默认不可信。Trust 不是单一布尔值，而是 source、version、review、signature、policy、sandbox 和 provenance 的组合。
+
+## spec 字段
+
+| 字段 | 要求 | 说明 |
+| --- | --- | --- |
+| `subjectRef` | 必填 | 被描述的对象。 |
+| `source` | 必填 | 来源信息。 |
+| `level` | 必填 | 信任等级，例如 `unknown`、`reviewed`、`trusted`。 |
+| `review` | 可选 | 审查人、时间和结论。 |
+| `signatures` | 可选 | 签名或 provenance 信息。 |
+| `sandbox` | 可选 | 推荐或要求的运行隔离。 |
+| `policyRefs` | 可选 | 适用策略。 |
+
+## 最小示例
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Trust
+metadata:
+  name: local-reviewed-grill-me
+spec:
+  subjectRef:
+    kind: Adapter
+    name: grill-me-skill-md
+  source:
+    type: local
+    path: skills/grill-me/SKILL.md
+  level: reviewed
+  review:
+    reviewer: justin
+    reviewedAt: "2026-06-23T12:00:00Z"
+    conclusion: approved-for-local-use
+  sandbox:
+    required: true
+    network: deny
+  policyRefs:
+    - name: safe-defaults
+```
+
+## status
+
+常见 conditions：
+
+- `TrustResolved`
+- `SignatureVerified`
+- `ReviewRequired`
+- `SandboxRequired`
+- `TrustExpired`
+
+## 设计约束
+
+Trust 不替代 Policy。Trust 描述“这个对象来自哪里、被怎么审查过”；Policy 决定“运行时允许它做什么”。

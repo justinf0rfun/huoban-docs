@@ -1,0 +1,74 @@
+---
+title: "导入 Cursor Rules"
+sidebarTitle: "导入 Cursor Rules"
+description: "把 Cursor Rules 迁移为分层 Huoban Profile。"
+---
+
+# 导入 Cursor Rules
+
+Cursor Rules 通常比单个 Markdown 文件更分散：可能按目录、文件类型、任务类型或团队规范拆分。
+
+Huoban 应把它们导入为多层 `Profile`，保留每条 rule 的来源和适用范围。
+
+## 命令
+
+```bash
+huoban import .cursor/rules --as Profile --out profiles/cursor-profile.yaml
+```
+
+## 导入原则
+
+- 每个 rule 文件保留来源路径。
+- 按适用范围生成 layer 或 layer metadata。
+- 不确定的 pattern / glob 不强行简化。
+- 工具特定行为保留为 `content`，跨工具语义进入 `data`。
+
+## 示例
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Profile
+metadata:
+  name: cursor-rules-profile
+spec:
+  layers:
+    - name: frontend-style
+      appliesTo:
+        paths:
+          - "src/**/*.tsx"
+      data:
+        preferExistingComponents: true
+      content: |
+        Reuse existing design system components before creating new ones.
+      source:
+        path: .cursor/rules/frontend.mdc
+    - name: testing
+      appliesTo:
+        paths:
+          - "**/*.test.ts"
+      data:
+        testFramework: vitest
+      content: |
+        Use Vitest patterns already present in the repository.
+      source:
+        path: .cursor/rules/testing.mdc
+```
+
+## 导出
+
+```bash
+huoban export profiles/cursor-profile.yaml --to cursor-rules
+```
+
+导出时应尽量保留原本的文件拆分。如果无法还原，应生成清晰的新规则文件并标明来源。
+
+## 与 AGENTS.md 的差异
+
+`AGENTS.md` 通常是单文件 profile。Cursor Rules 更像多 layer profile。
+
+因此 Cursor import 的重点是：
+
+- 保留每条规则的作用范围。
+- 保留路径条件。
+- 保留工具特定 metadata。
+- 把可共享语义抽成标准 Profile data。

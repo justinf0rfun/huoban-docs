@@ -1,0 +1,141 @@
+---
+title: "兼容等级"
+sidebarTitle: "兼容等级"
+description: "Huoban 的分级兼容模型：完整对象宇宙，低门槛实现。"
+---
+
+# 兼容等级
+
+Huoban v0.1 应一次性定义完整对象宇宙，但不能要求所有 runtime 一次实现全部能力。
+
+因此 Huoban 需要 conformance levels：让生态可以逐步兼容，也让用户知道某个工具到底支持哪些能力。
+
+## 原则
+
+- 文档定义完整世界观。
+- Object model 定义完整对象宇宙。
+- Conformance 定义最低兼容层。
+- Runtime 可以分级实现。
+- 用户可以根据等级判断工具能力。
+
+## 等级总览
+
+| 等级 | 名称 | 最低要求 |
+| --- | --- | --- |
+| L0 | `Huoban Spec Aware` | 能读取、解析、校验 Huoban 对象。 |
+| L1 | `Huoban Core Compatible` | 支持 `Skill / Profile / Flow / Run / Checkpoint`。 |
+| L2 | `Huoban Adapter Compatible` | 支持外部 skill / 外部能力适配。 |
+| L3 | `Huoban Policy Compatible` | 支持 Policy、side effects、approval。 |
+| L4 | `Huoban MCP Compatible` | 支持通过 MCP 暴露或调用 Huoban 对象。 |
+| L5 | `Huoban Full Runtime` | 支持完整执行、状态、artifact、registry、eval、policy、trust。 |
+
+## L0: Spec Aware
+
+工具满足 L0，意味着它可以：
+
+- 读取 Huoban YAML / JSON。
+- 识别 `apiVersion` 与 `kind`。
+- 使用 JSON Schema 校验对象。
+- 输出基本错误位置。
+
+典型工具：schema validator、IDE 插件、静态检查器。
+
+## L1: Core Compatible
+
+工具满足 L1，意味着它支持 Core API Objects：
+
+- `Skill`
+- `Profile`
+- `Flow`
+- `Run`
+- `Checkpoint`
+
+它至少应支持：
+
+- Profile 合并。
+- Flow 静态解释。
+- Run snapshot 生成。
+- Checkpoint 状态表达。
+- `status.conditions` 写入。
+
+## L2: Adapter Compatible
+
+工具满足 L2，意味着它可以把外部能力标准化为 Huoban 对象。
+
+最低要求：
+
+- 支持 `Adapter` 对象。
+- 支持 `SKILL.md` 或外部 MCP tool 的导入描述。
+- 支持 capability mapping。
+- 支持 declared side effects。
+- 支持 `ImportNeedsReview` condition。
+
+## L3: Policy Compatible
+
+工具满足 L3，意味着它可以基于策略控制执行边界。
+
+最低要求：
+
+- 支持 `Policy` 对象。
+- 支持 side-effect-based rules。
+- 支持 `allow`、`deny`、`requireApproval`。
+- 支持 checkpoint 触发。
+- 支持 observed side effects 记录。
+
+## L4: MCP Compatible
+
+工具满足 L4，意味着它可以通过 MCP 与外部 agent 或文档系统互操作。
+
+最低要求：
+
+- 能暴露 Huoban 对象为 MCP resource。
+- 能暴露 validate/explain/import/export 为 MCP tool。
+- 能读取 MCP tool 或 resource 并生成 Adapter。
+- 能保留 trust 与 side-effect 信息。
+
+## L5: Full Runtime
+
+工具满足 L5，意味着它是完整 Huoban runtime。
+
+最低要求：
+
+- 执行 Flow。
+- 解析 capability binding。
+- 注入 effective Profile。
+- 应用 Policy。
+- 记录 Artifact。
+- 执行 Eval。
+- 管理 Checkpoint。
+- 记录 observed side effects。
+- 维护 Registry。
+- 写入完整 status / conditions。
+
+## 为什么要分级
+
+没有分级，Huoban 会面临两个坏结果：
+
+- 标准太小，不能表达完整世界观。
+- 标准太大，没人愿意实现。
+
+分级兼容允许 Huoban 同时拥有完整方向和低门槛入口。
+
+## 声明兼容性
+
+工具可以声明：
+
+```yaml
+huobanConformance:
+  level: L2
+  name: Huoban Adapter Compatible
+  apiVersions:
+    - huoban.dev/v1alpha1
+  supportedKinds:
+    - Skill
+    - Profile
+    - Flow
+    - Run
+    - Checkpoint
+    - Adapter
+```
+
+声明必须可验证，不应只作为营销标签。

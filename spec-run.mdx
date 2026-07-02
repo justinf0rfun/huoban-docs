@@ -1,0 +1,67 @@
+---
+title: "Run 对象"
+sidebarTitle: "Run"
+description: "Run 是 Huoban 的一次锁版印刷，冻结 Flow、Profile、Skill binding 和 Policy 快照。"
+---
+
+# Run 对象
+
+`Run` 是一次具体执行。它像锁版印刷：执行开始后，必须冻结当时的 Flow、Profile、Skill binding 和 Policy，避免后续修改影响复盘。
+
+## spec 字段
+
+| 字段 | 要求 | 说明 |
+| --- | --- | --- |
+| `flowRef` | 必填 | 指向要执行或解释的 Flow。 |
+| `profileRefs` | 可选 | 本次 Run 追加或覆盖的 Profile。 |
+| `policyRefs` | 可选 | 本次 Run 使用的 Policy。 |
+| `bindings` | 可选 | capability 到具体 Skill / Adapter 的解析。 |
+| `snapshot` | 推荐 | 锁定 hash、generation 和 resolved refs。 |
+| `mode` | 可选 | `explain`、`dryRun`、`execute`。 |
+
+## 最小示例
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Run
+metadata:
+  name: idea-to-spec-review-20260623
+spec:
+  flowRef:
+    name: idea-to-spec-review
+    generation: 4
+  profileRefs:
+    - name: huoban-project
+      generation: 2
+  mode: dryRun
+  snapshot:
+    flowSpecHash: sha256:...
+    profileSpecHash: sha256:...
+    skillBindingHash: sha256:...
+```
+
+## status 字段
+
+| 字段 | 说明 |
+| --- | --- |
+| `phase` | 当前阶段，例如 `Planned`、`Running`、`WaitingForCheckpoint`、`Completed`。 |
+| `observedGeneration` | status 对应的 Run generation。 |
+| `currentStage` | 当前 stage id。 |
+| `conditions` | 细粒度状态。 |
+| `observedSideEffects` | 实际观测到的副作用。 |
+| `artifacts` | 产物引用。 |
+
+## 常见 conditions
+
+- `RunPlanned`
+- `StageStarted`
+- `ArtifactProduced`
+- `CheckpointRequired`
+- `CheckpointApproved`
+- `UndeclaredSideEffectObserved`
+- `RunCompleted`
+- `RunFailed`
+
+## 设计约束
+
+正在执行的 Run 不应悄悄切换到新版本 Flow 或 Profile。用户修改 Flow 后，应创建新的 Run 或明确 resume 策略。

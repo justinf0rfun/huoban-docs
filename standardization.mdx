@@ -1,0 +1,118 @@
+---
+title: "标准化路径"
+sidebarTitle: "标准化路径"
+description: "Huoban 的标准边界、进入核心标准的条件、发布就绪标准和公司实践反馈循环。"
+icon:
+  name: "route"
+  library: "lucide"
+---
+
+# 标准化路径
+
+Huoban 是 standard-first、runtime-later。
+
+目标是定义一套 AI 原生工作的共享对象模型，让不同 agent、tool、skill、MCP server 和项目上下文可以互相理解。Huoban 当前优先建设标准对象、schema、examples 和解释能力；reference runtime 应该晚于对象模型验证。
+
+## 标准边界
+
+公共标准应该定义：
+
+- 对象种类和 schema。
+- 对象语义。
+- 必填字段和可选字段。
+- 兼容等级。
+- 验证行为。
+- import/export 预期。
+- trust 和 policy 边界。
+- 能展示真实工作流的 examples。
+
+公共标准不应该定义：
+
+- 唯一 runner。
+- 唯一 agent。
+- 某一家公司的代码风格。
+- 某一家公司的架构规则。
+- 某一套私有工具链。
+- 适合所有项目的万能 workflow。
+
+公司实践在证明可复用之前，应该先留在 `Profile`、`Policy`、`Adapter`、`Flow` 和 `Run` 对象里。
+
+## 进入核心标准的条件
+
+一个能力或字段进入核心标准前，必须同时满足：
+
+- 在至少两个真实 workflow 中出现。
+- 不绑定某一家公司、某一个仓库或某一个 agent。
+- 不依赖隐藏 prompt 行为。
+- 可以被 schema 验证。
+- 可以被 CLI 解释。
+- 提升的是互操作性，而不只是方便某一个实现。
+
+如果这些条件不满足，就先把它留在 extension、example、adapter 或私有 project profile 中。
+
+## 对象稳定等级
+
+Huoban 应该用稳定等级避免把所有想法都伪装成成熟标准。
+
+| Level | 含义 | 适用场景 |
+| --- | --- | --- |
+| `experimental` | 形状还在验证。 | 公司项目、examples、设计讨论。 |
+| `draft` | 语义基本稳定。 | 早期公共用户和 adapter 作者。 |
+| `stable` | 需要兼容性承诺。 | 公共标准和跨 runner 支持。 |
+| `deprecated` | 已被替代但仍可识别。 | 迁移期和兼容窗口。 |
+
+当前仓库可以继续使用 `v1alpha1` schema，同时让对象模型保持 `experimental` 或 `draft` 状态。
+
+## 发布就绪标准
+
+一次公开发布至少应该满足：
+
+- `npm run validate` 通过。
+- `npm run explain` 能给出连贯的 workspace 视图。
+- `npm run print:dry-run` 能生成有效 Run。
+- README / 简介能解释对象模型和 quickstart。
+- `llms.txt` 能给 AI agent 提供可靠入口。
+- 设计哲学清楚，且不暴露内部竞争类比。
+- 标准边界和公司实践边界明确。
+
+## 实践反馈循环
+
+Phase 3 和 Phase 4 应该把 Huoban 放进真实公司项目里验证。
+
+反馈循环应该是：
+
+1. 用私有 `Profile`、`Policy`、`Adapter` 和 `Flow` 捕获公司 workflow。
+2. 执行前先 print dry-run `Run`。
+3. 记录需要人类判断的 checkpoint。
+4. 捕获 artifact 和 observed side effects。
+5. 比较多个 workflow 中重复出现的模式。
+6. 只把可复用模式提升到公共标准。
+7. 把公司特定判断继续留在私有 profile 和 policy 中。
+
+这样可以防止标准太空，也可以防止标准被某一个环境污染。
+
+## 公司项目中要验证什么
+
+公司实践应该重点验证这些问题：
+
+- `Profile` 是否能让 agent 比散落的 Markdown 更快理解项目？
+- 风险动作是否能被清楚表达成 `Policy`？
+- `AGENTS.md`、`CLAUDE.md`、Cursor Rules 和 `SKILL.md` 是否能通过 `Adapter` 或 `Profile` 保留原意？
+- `Flow` 是否能描述真实工作，而不是把逻辑藏进 prompt？
+- `Run` snapshot 是否能让 AI 工作在事后可审查？
+- checkpoint 是否能在正确位置拦住危险自动化？
+- artifact 是否能记录产物、原因和上下文？
+
+只有这些问题在真实项目中产生重复证据，标准才应该继续演进。
+
+## 非目标
+
+Huoban 不应该急着做：
+
+- 在对象模型验证前做完整 runtime。
+- 在 trust 语义清楚前做 hosted registry。
+- 在 adapter 质量可衡量前做 marketplace。
+- 在文本对象稳定前做 visual builder。
+- 在真实 workflow 被理解前做万能 flow generator。
+
+这些都可以以后再做。第一责任是把标准打干净。

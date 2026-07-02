@@ -1,0 +1,76 @@
+---
+title: "Profile 对象"
+sidebarTitle: "Profile"
+description: "Profile 是 Huoban 的上下文对象，负责 data/content 双层、layer 合并和运行时快照。"
+---
+
+# Profile 对象
+
+`Profile` 是 Huoban 的墨方：它不改变活字本身，但决定能力在某个项目、团队或场景里的判断重点。
+
+AGENTS.md、CLAUDE.md 和 Cursor Rules 是 profile file；Huoban Profile 是 profile object。
+
+## 语义
+
+Profile 用于表达：
+
+- 项目上下文。
+- 团队习惯。
+- 架构约束。
+- 验证命令。
+- 风险偏好。
+- 领域术语。
+
+## spec 字段
+
+| 字段 | 要求 | 说明 |
+| --- | --- | --- |
+| `layers` | 必填 | 分层上下文数组。 |
+| `layers[].name` | 必填 | layer 名称，例如 `style`、`architecture`、`commands`。 |
+| `layers[].data` | 可选 | 结构化字段，供 validator、merge、policy 使用。 |
+| `layers[].content` | 可选 | 自然语言上下文，供 agent 使用。 |
+| `merge` | 可选 | 合并策略，例如 append、replace、override。 |
+| `policyRefs` | 可选 | 关联的 Policy，但不内联权限规则。 |
+
+## 最小示例
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Profile
+metadata:
+  name: project-profile
+spec:
+  layers:
+    - name: style
+      data:
+        preferSmallChanges: true
+        testFirstForBugfixes: true
+      content: |
+        Prefer surgical changes. Do not refactor unrelated code.
+    - name: commands
+      data:
+        testCommand: npm test
+      content: |
+        Run npm test before finalizing changes.
+```
+
+## 合并规则
+
+推荐默认规则：
+
+- 按 `profileRefs` 顺序应用。
+- 后者覆盖前者的同名 scalar 字段。
+- list 默认 append，除非声明 replace。
+- 同名 layer 合并。
+- 冲突写入 `status.conditions`。
+
+## status
+
+常见 conditions：
+
+- `ProfileImported`
+- `ProfileResolved`
+- `ProfileConflictDetected`
+- `ImportNeedsReview`
+
+最终 effective Profile 必须可解释、可 hash、可进入 Run snapshot。

@@ -1,0 +1,47 @@
+---
+title: "版本记录"
+sidebarTitle: "版本记录"
+description: "Huoban 的公开版本变更记录，当前记录 0.1.0-alpha.0 初始协议发布。"
+icon:
+  name: "history"
+  library: "lucide"
+---
+
+# 版本记录
+
+所有 Huoban 的重要变更都会记录在这里。
+
+项目在协议仍处于 `v1alpha1` 阶段时，遵循早期 semantic versioning。
+
+## 0.1.0-alpha.0
+
+Initial protocol release.
+
+Added:
+
+- Huoban design philosophy：可排版、可润墨、可印刷。
+- `v1alpha1` JSON Schemas for core objects。
+- Valid examples for `Skill`、`Profile`、`Flow`、`Run`、`Checkpoint`、`Policy`、`Adapter`、`Artifact`、`Registry` and `Trust`。
+- Minimal `huoban` CLI with `validate`、`explain`、`import`、`export`、`derive` and `print --dry-run`。
+- AI-native documentation entrypoint through `llms.txt`。
+- Standardization guidance for separating public protocol concepts from private company practice。
+- Visual protocol demos。
+
+## 验证发布内容
+
+当前 release 的核心验证命令：
+
+```bash
+npm test
+npm run validate
+npm run explain
+npm run print:dry-run
+```
+
+核心示例入口：
+
+```text
+examples/flows/idea-to-spec-review.yaml
+examples/generated/idea-to-spec-review-dry-run.yaml
+examples/checkpoints/idea-to-spec-review-direction.yaml
+```

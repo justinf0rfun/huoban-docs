@@ -1,0 +1,65 @@
+---
+title: "Flow 对象"
+sidebarTitle: "Flow"
+description: "Flow 是 Huoban 的版式对象，声明 stage、capability、profile、policy、checkpoint 和 artifact。"
+---
+
+# Flow 对象
+
+`Flow` 是 Huoban 的版式：它声明能力如何排列、上下文如何传递、哪里需要校对、产物如何生成。
+
+Flow 应优先引用 capability，而不是强绑定具体 Skill。具体 Skill 由 Run 或 runtime binding 解析。
+
+## spec 字段
+
+| 字段 | 要求 | 说明 |
+| --- | --- | --- |
+| `profileRefs` | 可选 | Flow 默认使用的 Profile。 |
+| `policyRefs` | 可选 | Flow 默认使用的 Policy。 |
+| `stages` | 必填 | 阶段数组。 |
+| `stages[].id` | 必填 | 稳定 stage id。 |
+| `stages[].requires.capability` | 推荐 | 需要的能力，例如 `huoban.dev/designReview`。 |
+| `stages[].uses` | 可选 | shortcut：直接引用具体 Skill 或 Adapter。 |
+| `stages[].inputs` | 可选 | 输入来源。 |
+| `stages[].outputs` | 可选 | 输出 artifact 声明。 |
+| `checkpoints` | 可选 | 人工或规则校对点。 |
+
+## 最小示例
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Flow
+metadata:
+  name: idea-to-spec-review
+spec:
+  profileRefs:
+    - name: huoban-project
+  stages:
+    - id: sharpen-idea
+      requires:
+        capability: huoban.dev/designReview
+      inputs:
+        - name: idea
+          from: user.prompt
+      outputs:
+        - name: review-notes
+          artifactType: decision-notes
+  checkpoints:
+    - after: sharpen-idea
+      type: humanApproval
+      required: true
+```
+
+## status
+
+Flow status 通常由 validator 或 runtime 写入：
+
+- `FlowValidated`
+- `ProfileResolved`
+- `PolicyChecked`
+- `SkillResolved`
+- `RunPlanned`
+
+## 设计约束
+
+不要把 Flow 写成过程式脚本。`shell`、`command`、具体 CLI 参数应进入 Adapter 或 runtime-specific extension，不应污染核心 Flow。

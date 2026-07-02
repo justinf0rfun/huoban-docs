@@ -1,0 +1,115 @@
+---
+title: "贡献与治理"
+sidebarTitle: "贡献与治理"
+description: "Huoban 的贡献方式、对象变更流程、标准提升条件和轻量治理原则。"
+---
+
+# 贡献与治理
+
+Huoban 是早期协议项目。贡献应优先改进标准对象、schema、examples 和 explain 能力，而不是急着扩展 runtime surface。
+
+## 开发环境
+
+使用 Node.js 20 或 later。
+
+```bash
+npm install
+npm test
+```
+
+`npm test` 会重新生成确定性的 examples，验证所有 YAML 对象，解释 workspace，并检查生成文件是否漂移。
+
+## 适合贡献的内容
+
+优先贡献：
+
+- 改进 schema 清晰度。
+- 添加能在本地验证的真实 example。
+- 改进 `huoban explain` 输出。
+- 为现有 AI 指令格式添加 adapter。
+- 澄清公共标准边界。
+
+早期应避免：
+
+- 完整 runtime implementations。
+- Hosted registries。
+- Marketplaces。
+- UI builders。
+- 把公司特定规则提升为公共标准。
+
+## 对象变更流程
+
+修改对象 schema 时，必须同步完成：
+
+1. 更新 `schemas/v1alpha1/` 中的 schema。
+2. 更新 `examples/` 中至少一个 example。
+3. 如果语义发生变化，更新文档。
+4. 运行 `npm test`。
+
+不要添加边界不清晰的新 object kind。新对象必须说明它和现有 `Skill`、`Profile`、`Policy`、`Flow`、`Run`、`Checkpoint`、`Adapter`、`Artifact`、`Registry`、`Trust` 的区别。
+
+## 标准提升条件
+
+一个功能进入核心标准前，应同时满足：
+
+- 出现在重复的真实 workflow 中。
+- 不绑定某一家公司或某一个 agent。
+- 可以被 schema 验证。
+- 可以通过 example 说明。
+- 能提升互操作性。
+
+在证明可复用之前，公司特定实践应留在 `Profile`、`Policy`、`Adapter`、`Flow` 和 `Run` 对象中。
+
+## Capability 命名
+
+标准能力使用 `huoban.dev/*` 命名空间。
+
+```text
+huoban.dev/designReview
+huoban.dev/specification
+```
+
+第三方能力应使用自己的命名空间。
+
+```text
+example.com/customCapability
+vendor.example/specializedReview
+```
+
+新增标准 capability 时，应说明它和现有 capability 的区别，哪些 `Skill` 或 `Adapter` 会声明它，以及它是否足够通用。
+
+## 变更验收
+
+提交前至少运行：
+
+```bash
+npm test
+```
+
+如果只修改 schema、example 或 CLI，也应确认：
+
+```bash
+npm run validate
+npm run explain
+npm run print:dry-run
+```
+
+如果修改 Profile、Policy 或 adapter 行为，也应确认：
+
+```bash
+npm run import:profile
+npm run derive:policy
+npm run export:agents
+```
+
+## 治理原则
+
+早期治理保持轻量：
+
+- 创始团队维护方向一致性。
+- 文档和示例快速迭代。
+- 核心对象变更需要公开说明和版本记录。
+- 兼容性破坏必须进入 migration notes。
+- 当外部贡献者稳定出现后，再建立更正式的 steering 机制。
+
+Huoban 的核心要保持小而稳定，扩展要保持开放。

@@ -1,0 +1,88 @@
+---
+title: "示例：导入 AGENTS.md 为 Profile"
+sidebarTitle: "AGENTS.md Profile"
+description: "把 AGENTS.md 中的工程规则迁移成 Huoban Profile 对象的示例。"
+---
+
+# 示例：导入 AGENTS.md 为 Profile
+
+这个示例展示如何把一个项目里的 `AGENTS.md` 转换为 Huoban `Profile`。
+
+命令形态：
+
+```bash
+huoban import AGENTS.md --as Profile --out profiles/project.yaml
+huoban explain profiles/project.yaml
+huoban validate profiles/project.yaml
+```
+
+## 输入片段
+
+```md
+# Agent Rules
+
+Prefer small surgical changes. Do not refactor unrelated code.
+Run npm test before finalizing changes.
+Ask before modifying git history or publishing remote changes.
+```
+
+## 输出 Profile
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Profile
+metadata:
+  name: project-profile
+  labels:
+    huoban.dev/imported-from: AGENTS.md
+spec:
+  layers:
+    - name: style
+      data:
+        preferSmallChanges: true
+        avoidUnrelatedRefactor: true
+      content: |
+        Prefer small surgical changes. Do not refactor unrelated code.
+
+    - name: commands
+      data:
+        testCommand: npm test
+      content: |
+        Run npm test before finalizing changes.
+
+    - name: risk
+      data:
+        requiresApproval:
+          - modifyGitHistory
+          - publishRemote
+      content: |
+        Ask before modifying git history or publishing remote changes.
+status:
+  conditions:
+    - type: ProfileImported
+      status: "True"
+      reason: ImportedFromMarkdown
+      message: "AGENTS.md was converted into Profile layers."
+    - type: ImportNeedsReview
+      status: "True"
+      reason: NaturalLanguageInference
+      message: "Some structured fields were inferred and should be reviewed."
+```
+
+## 解释结果
+
+`huoban explain` 应至少说明：
+
+- 原文被保留到 `content`。
+- 工程习惯进入 `style` layer。
+- 验证命令进入 `commands` layer。
+- 风险提示进入 `risk` layer。
+- 权限规则不应留在 Profile，后续应拆成 Policy。
+
+## 后续动作
+
+如果 `risk` layer 中出现审批要求，推荐继续生成 Policy：
+
+```bash
+huoban derive policy profiles/project.yaml --out policies/project-risk.yaml
+```

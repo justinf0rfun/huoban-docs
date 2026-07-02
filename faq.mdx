@@ -1,0 +1,73 @@
+---
+title: "FAQ"
+sidebarTitle: "FAQ"
+description: "Huoban 的定位、边界和与 MCP、runner、skills、AGENTS.md 的关系。"
+---
+
+# FAQ
+
+## Huoban 是什么？
+
+Huoban 是 AI 系统的开放编排协议：可排版、可润墨、可印刷。
+
+更具体地说，Huoban 定义 AI 原生工作的共享对象模型：`Skill`、`Profile`、`Flow`、`Run`、`Checkpoint`、`Policy`、`Adapter`、`Artifact`、`Registry` 和 `Trust`。
+
+## Huoban 是 agent runner 吗？
+
+不是。
+
+Huoban 可以有 reference runtime，但项目核心不是 runner。Huoban 首先定义对象模型、schema、兼容等级和迁移路径。不同 runtime、IDE、agent 平台或 MCP server 都可以实现 Huoban。
+
+## Huoban 和 MCP 是什么关系？
+
+MCP 是工具和上下文连接协议。Huoban 是 AI 工作的对象模型和编排协议。
+
+两者可以互补：
+
+- Huoban 可以通过 MCP 暴露对象、validate、explain、import、export。
+- MCP tool 可以通过 Adapter 进入 Huoban 对象模型。
+- Huoban 的 Trust / Policy / Side Effects 可以补足工具调用的治理边界。
+
+## Huoban 会替代 AGENTS.md、CLAUDE.md 或 Cursor Rules 吗？
+
+不会。
+
+这些文件是 profile file。Huoban Profile 是 profile object。
+
+Huoban 的目标是支持导入和导出，让现有上下文资产升级为可分层、可合并、可校验、可快照的对象，同时保留回到原格式的能力。
+
+## Huoban 会替代 Claude Code skills 或 Codex skills 吗？
+
+不会。
+
+现有 skill 生态是 Huoban 的活字来源。Huoban 通过 Adapter 把外部 skill 标准化，补齐 capability、输入输出、side effects、checkpoint 和 trust 信息。
+
+## 为什么第一步是 Profile import，而不是 run？
+
+因为大量 AI coding power user 已经有上下文资产，但这些资产散落在项目文件、规则文件和聊天习惯里。
+
+Profile import 能立刻把现有资产变成标准对象，采用成本低，也能证明 Huoban 的核心价值：把隐性 workflow 显性化。
+
+## 为什么要区分 Profile 和 Policy？
+
+Profile 是墨方，影响 agent 判断。Policy 是印坊规矩，决定行为边界。
+
+如果混在一起，偏好、上下文和安全规则会变得不可审计。
+
+## 为什么 Flow 应引用 capability，而不是直接引用 Skill？
+
+Capability-first 让 Flow 更可移植。
+
+Flow 表达“需要设计审查能力”，Run 或 runtime 再解析具体 Skill / Adapter。这让不同团队、不同 runtime 可以用不同实现执行同一个 Flow。
+
+## Huoban 什么时候需要完整 runtime？
+
+不是第一优先级。
+
+早期更重要的是：对象模型、schema、validate、explain、import、export、dry-run、examples 和 conformance。完整 runtime 应在标准语言稳定后再推进。
+
+## Huoban 的成功指标是什么？
+
+早期不应只看 stars 或 downloads。
+
+更好的指标是：非核心贡献者开始写外部 Huoban 对象，例如 Flow、Profile、Adapter、第三方 validator、第三方 runtime 实验和 capability taxonomy 讨论。

@@ -1,0 +1,81 @@
+---
+title: "导入 CLAUDE.md"
+sidebarTitle: "导入 CLAUDE.md"
+description: "把 Claude Code 项目记忆迁移为 Huoban Profile。"
+---
+
+# 导入 CLAUDE.md
+
+`CLAUDE.md` 通常承载 Claude Code 项目的长期记忆：项目背景、常用命令、代码风格、测试方式和协作约定。
+
+Huoban 将它视为一种 profile file，可以导入为 `Profile`，再按需要导出回 `CLAUDE.md`。
+
+## 命令
+
+```bash
+huoban import CLAUDE.md --as Profile --out profiles/claude-profile.yaml
+```
+
+## 迁移重点
+
+Claude Code 的记忆文件往往较偏自然语言，因此导入时应保守：
+
+- 明确规则进入 `data`。
+- 解释性文字保留在 `content`。
+- 无法判断的约束不强行结构化。
+- 与权限有关的规则转成 Policy 建议。
+
+## 推荐 layer
+
+- `project`：项目目标和背景。
+- `architecture`：模块边界和技术路线。
+- `commands`：构建、测试、lint、类型检查命令。
+- `style`：编码风格和改动原则。
+- `review`：提交前检查和审查标准。
+- `risk`：需要人工确认的行为。
+
+## 示例
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Profile
+metadata:
+  name: claude-project-profile
+spec:
+  layers:
+    - name: commands
+      data:
+        test: pnpm test
+        lint: pnpm lint
+      content: |
+        Run pnpm test and pnpm lint before finalizing substantial changes.
+    - name: style
+      data:
+        preserveExistingStyle: true
+      content: |
+        Match the existing code style. Avoid unrelated refactors.
+status:
+  conditions:
+    - type: ImportNeedsReview
+      status: "True"
+      reason: ToolSpecificMemory
+      message: "Imported from CLAUDE.md; review before using as a cross-tool profile."
+```
+
+## 导出
+
+```bash
+huoban export profiles/claude-profile.yaml --to CLAUDE.md
+```
+
+导出时应生成 Claude Code 易读的 Markdown，而不是暴露完整 YAML 结构。
+
+## 边界
+
+`CLAUDE.md` 可以继续存在。Huoban 不要求用户删除它。
+
+推荐做法是：
+
+- Huoban Profile 作为标准源。
+- `CLAUDE.md` 作为某个工具生态的导出产物。
+- 当 Profile 变化时，重新导出。

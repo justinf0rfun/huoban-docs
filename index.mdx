@@ -1,0 +1,273 @@
+---
+title: "Huoban 简介"
+description: "Huoban 是 AI 系统的开放编排协议：可排版、可润墨、可印刷。"
+sidebarTitle: "简介"
+---
+
+
+
+# Huoban 活板 活板
+
+Huoban 是 AI 系统的开放编排协议：可排版、可润墨、可印刷。
+
+Huoban 是 AI 系统的开放编排协议：可排版、可润墨、可印刷。
+
+Huoban 把 AI 原生工作拆成一组可验证、可组合、可审查的标准对象。它的优先级不是先提供完整 runtime，而是先定义对象模型、JSON Schema、可验证 examples、最小 CLI 和 import/export/explain/print 工作流Huoban 把 AI 原生工作拆成一组可验证、可组合、可审查的标准对象。它的优先级不是先提供完整 runtime，而是先定义对象模型、JSON Schema、可验证 examples、最小 CLI 和 import/export/explain/print 工作流。
+
+当前仓库处在 `v0.1` 协议建设阶段。Huoban 是 standard-first、runtime-later当前仓库处在 `v0.1` 协议建设阶段。Huoban 是 standard-first、runtime-later。
+
+## 核心对象
+
+| Object | Huoban 隐喻 | 用途 |
+| --- | --- | --- |
+| `Skill` | 活字 | 可复用、可重排的原子能力。 |
+| `Profile` | 墨方 | 运行时注入的分层上下文。 |
+| `Flow` | 版式 | capability 顺序、阶段、checkpoint 和 artifact 的编排。 |
+| `Run` | 锁版印刷 | 一次具体执行的锁定快照。 |
+| `Checkpoint` | 校对 | 人类或系统的决策边界。 |
+| `Policy` | 印坊规矩 | 副作用、审批和权限规则。 |
+| `Adapter` | 异形活字转接件 | 标准化现有 skill、MCP tool 或上下文文件等外部能力。 |
+
+## 当前状态
+
+Huoban 当前优先建设五件事：
+
+1. 为 Huoban 对象定义 `v1alpha1` JSON Schema。
+2. 提供可验证 YAML examples。
+3. 提供最小 `huoban validate` CLI。
+4. 提供 import/export、explain 和 dry-run print 工作流。
+5. 在对象模型稳定后，再考虑 reference runtime。
+
+schema 是对象形状的事实来源。examples 是对象如何组合的事实来源。
+
+## AI-Native 入口
+
+AI agent 从 `llms.txt` 开始读。人和 agent 在本项目中建议按这个顺序阅读：
+
+1. README / 简介
+2. 设计哲学
+3. AI-Native 文档
+4. 标准化路径
+5. `schemas/v1alpha1/`
+6. `examples/`
+
+当 prose 和 schema 冲突时，以 schema 为准。对象形状不能靠自然语言猜。
+
+## 最短验证路径
+
+```bash
+npm install
+npm test
+npm run validate
+npm run explain
+npm run print:dry-run
+```
+
+验证单个 Flow：
+
+```bash
+npm exec -- huoban validate examples/flows/idea-to-spec-review.yaml
+```
+
+预期输出：
+
+```text
+✓ examples/flows/idea-to-spec-review.yaml: Flow/idea-to-spec-review
+```
+
+## 第一个 Demo Flow
+
+第一个 demo flow 是 `idea-to-spec-review`。它展示：
+
+- `Profile`：项目上下文和设计哲学。
+- `Flow`：capability-first 编排。
+- `Adapter`：导入的 `SKILL.md`。
+- `Run`：锁定的 dry-run 快照。
+- `Checkpoint`：人类决策边界。
+- `Artifact`：run 产出的 review notes。
+
+从 `examples/flows/idea-to-spec-review.yaml` 开始阅读。
+
+## 推荐阅读
+
+<Steps>
+  <Step title="先理解方向">
+    阅读 [愿景与开源策略](/vision-and-strategy)，确认 Huoban 为什么先做对象模型，而不是直接做 runner。
+  </Step>
+  <Step title="理解 AI-native 文档">
+    阅读 [AI-Native 文档](/ai-native)，确认 Huoban 如何同时服务人类读者、AI agent、机器验证和公司实践反馈。
+  </Step>
+  <Step title="从已有上下文开始">
+    阅读 [快速开始](/quickstart)，把现有 `AGENTS.md` 或 `CLAUDE.md` 导入成 `Profile`。
+  </Step>
+  <Step title="从已有上下文开始">
+    阅读 [快速开始](/quickstart)，把现有 `AGENTS.md` 或 `CLAUDE.md` 导入成 `Profile`。
+  </Step>
+  <Step title="理解对象模型">
+    阅读 [对象模型](/object-model)、[Profile 模型](/profile-model) 和 [Flow 模型](/flow-model)。
+  </Step>
+  <Step title="理解对象模型">
+    阅读 [对象模型](/object-model)、[Profile 模型](/profile-model) 和 [Flow 模型](/flow-model)。
+  </Step>
+  <Step title="理解边界和安全">
+    阅读 [兼容等级](/conformance) 与 [信任模型](/trust-model)。
+  </Step>
+  <Step title="理解边界和安全">
+    阅读 [兼容等级](/conformance)、[信任模型](/trust-model) 与 [标准化路径](/standardization)。
+  </Step>
+  <Step title="理解边界和安全">
+    阅读 [兼容等级](/conformance) 与 [信任模型](/trust-model)。
+  </Step>
+  <Step title="查看规范和示例">
+    阅读 [规范参考总览](/spec-reference)、[示例总览](/examples-overview) 和 [术语表](/glossary)。
+  </Step>
+  <Step title="查看规范和示例">
+    阅读 [规范参考总览](/spec-reference)、[示例总览](/examples-overview) 和 [术语表](/glossary)。
+  </Step>
+</Steps>
+
+<CardGroup cols={2}>
+  <Card title="快速开始" icon="rocket" href="/quickstart">
+    安装依赖，运行验证命令，检查核心 examples。
+  </Card>
+
+  <Card title="设计哲学" icon="blocks" href="/design-philosophy">
+    理解 Huoban 活板为什么使用活字印刷术作为结构隐喻。
+  </Card>
+
+  <Card title="AI-Native 文档" icon="bot" href="/ai-native">
+    理解人、AI agent、schema 和 examples 如何共同构成事实来源。
+  </Card>
+
+  <Card title="标准化路径" icon="route" href="/standardization">
+    理解公共标准、私有实践和真实 workflow 反馈循环的边界。
+  </Card>
+</CardGroup>
+
+## 核心对象
+
+| Object | Huoban 隐喻 | 用途 |
+| --- | --- | --- |
+| `Skill` | 活字 | 可复用、可重排的原子能力。 |
+| `Profile` | 墨方 | 运行时注入的分层上下文。 |
+| `Flow` | 版式 | capability 顺序、阶段、checkpoint 和 artifact 的编排。 |
+| `Run` | 锁版印刷 | 一次具体执行的锁定快照。 |
+| `Checkpoint` | 校对 | 人类或系统的决策边界。 |
+| `Policy` | 印坊规矩 | 副作用、审批和权限规则。 |
+| `Adapter` | 异形活字转接件 | 标准化现有 skill、MCP tool 或上下文文件等外部能力。 |
+
+## 当前状态
+
+Huoban 当前优先建设五件事：
+
+1. 为 Huoban 对象定义 `v1alpha1` JSON Schema。
+2. 提供可验证 YAML examples。
+3. 提供最小 `huoban validate` CLI。
+4. 提供 import/export、explain 和 dry-run print 工作流。
+5. 在对象模型稳定后，再考虑 reference runtime。
+
+schema 是对象形状的事实来源。examples 是对象如何组合的事实来源。
+
+## AI-Native 入口
+
+AI agent 从 `llms.txt` 开始读。人和 agent 在本项目中建议按这个顺序阅读：
+
+1. README / 简介
+2. 设计哲学
+3. AI-Native 文档
+4. 标准化路径
+5. `schemas/v1alpha1/`
+6. `examples/`
+
+当 prose 和 schema 冲突时，以 schema 为准。对象形状不能靠自然语言猜。
+
+## 最短验证路径
+
+```bash
+npm install
+npm test
+npm run validate
+npm run explain
+npm run print:dry-run
+```
+
+验证单个 Flow：
+
+```bash
+npm exec -- huoban validate examples/flows/idea-to-spec-review.yaml
+```
+
+预期输出：
+
+```text
+✓ examples/flows/idea-to-spec-review.yaml: Flow/idea-to-spec-review
+```
+
+## 第一个 Demo Flow
+
+第一个 demo flow 是 `idea-to-spec-review`。它展示：
+
+- `Profile`：项目上下文和设计哲学。
+- `Flow`：capability-first 编排。
+- `Adapter`：导入的 `SKILL.md`。
+- `Run`：锁定的 dry-run 快照。
+- `Checkpoint`：人类决策边界。
+- `Artifact`：run 产出的 review notes。
+
+从 `examples/flows/idea-to-spec-review.yaml` 开始阅读。
+
+## 推荐阅读
+
+<Steps>
+  <Step title="先理解方向">
+    阅读 [愿景与开源策略](/vision-and-strategy)，确认 Huoban 为什么先做对象模型，而不是直接做 runner。
+  </Step>
+  <Step title="理解 AI-native 文档">
+    阅读 [AI-Native 文档](/ai-native)，确认 Huoban 如何同时服务人类读者、AI agent、机器验证和公司实践反馈。
+  </Step>
+  <Step title="从已有上下文开始">
+    阅读 [快速开始](/quickstart)，把现有 `AGENTS.md` 或 `CLAUDE.md` 导入成 `Profile`。
+  </Step>
+  <Step title="从已有上下文开始">
+    阅读 [快速开始](/quickstart)，把现有 `AGENTS.md` 或 `CLAUDE.md` 导入成 `Profile`。
+  </Step>
+  <Step title="理解对象模型">
+    阅读 [对象模型](/object-model)、[Profile 模型](/profile-model) 和 [Flow 模型](/flow-model)。
+  </Step>
+  <Step title="理解对象模型">
+    阅读 [对象模型](/object-model)、[Profile 模型](/profile-model) 和 [Flow 模型](/flow-model)。
+  </Step>
+  <Step title="理解边界和安全">
+    阅读 [兼容等级](/conformance) 与 [信任模型](/trust-model)。
+  </Step>
+  <Step title="理解边界和安全">
+    阅读 [兼容等级](/conformance)、[信任模型](/trust-model) 与 [标准化路径](/standardization)。
+  </Step>
+  <Step title="理解边界和安全">
+    阅读 [兼容等级](/conformance) 与 [信任模型](/trust-model)。
+  </Step>
+  <Step title="查看规范和示例">
+    阅读 [规范参考总览](/spec-reference)、[示例总览](/examples-overview) 和 [术语表](/glossary)。
+  </Step>
+  <Step title="查看规范和示例">
+    阅读 [规范参考总览](/spec-reference)、[示例总览](/examples-overview) 和 [术语表](/glossary)。
+  </Step>
+</Steps>
+
+<CardGroup cols={2}>
+  <Card title="快速开始" icon="rocket" href="/quickstart">
+    安装依赖，运行验证命令，检查核心 examples。
+  </Card>
+
+  <Card title="设计哲学" icon="blocks" href="/design-philosophy">
+    理解 Huoban 活板为什么使用活字印刷术作为结构隐喻。
+  </Card>
+
+  <Card title="AI-Native 文档" icon="bot" href="/ai-native">
+    理解人、AI agent、schema 和 examples 如何共同构成事实来源。
+  </Card>
+
+  <Card title="标准化路径" icon="route" href="/standardization">
+    理解公共标准、私有实践和真实 workflow 反馈循环的边界。
+  </Card>
+</CardGroup>

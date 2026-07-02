@@ -1,0 +1,170 @@
+---
+title: "路线图"
+sidebarTitle: "路线图"
+description: "Huoban 从文档、对象模型、schema 到 reference runtime 的阶段路线。"
+---
+
+# 路线图
+
+Huoban 当前阶段的重点不是快速写 runtime，而是先建立清晰、专业、可传播的标准语言。
+
+## 当前阶段：官方文档
+
+目标：把 Huoban 的公开叙事和标准边界讲清楚。
+
+交付物：
+
+- 项目首页。
+- 快速开始。
+- 愿景与开源策略。
+- 设计哲学。
+- 对象模型。
+- Profile / Flow 模型。
+- 迁移指南。
+- 兼容等级。
+- 信任模型。
+
+成功标准：陌生开发者能在 10 分钟内理解 Huoban 不是 runner，而是 AI 原生工作的对象模型和开放编排协议。
+
+## Phase 0：Spec 与示例
+
+目标：建立最小标准仓库骨架。
+
+建议结构：
+
+```text
+README.md
+HUOBAN_DESIGN_PHILOSOPHY.md
+docs/
+spec/
+schemas/
+examples/
+```
+
+交付物：
+
+- `spec/v1alpha1/` 文档。
+- `schemas/v1alpha1/*.schema.json`。
+- `examples/idea-to-spec-review/`。
+- `examples/profile-import/`。
+- `docs/trust-model.md`。
+- `docs/conformance.md`。
+
+暂不做完整 runtime。
+
+## Phase 1：Validator 与 Import/Export
+
+目标：让用户可以把已有上下文资产带入 Huoban。
+
+优先命令：
+
+```bash
+huoban validate
+huoban explain
+huoban import
+huoban export
+```
+
+优先用例：
+
+- `AGENTS.md -> Profile`
+- `CLAUDE.md -> Profile`
+- `Cursor Rules -> Profile`
+- `SKILL.md -> Adapter`
+
+成功标准：外部用户开始提交 Profile、Adapter、Flow examples。
+
+## Phase 2：Dry-run 与 Reference Runtime
+
+目标：证明 Huoban 对象可以被解释成一次可审计的 AI 工作计划。
+
+优先命令：
+
+```bash
+huoban print --dry-run
+```
+
+交付物：
+
+- Run snapshot 生成。
+- Profile 合并解释。
+- Policy 预检查。
+- Checkpoint 计划。
+- Artifact 计划。
+- Conditions 输出。
+
+仍然不急着执行任意 agent workflow。
+
+## Phase 3：MCP Integration
+
+目标：让 Huoban 对象可以被 agent 工具链读取和调用。
+
+交付物：
+
+- Huoban MCP server。
+- Huoban MCP resources。
+- Validate / explain / import / export tools。
+- Profile / Flow / Run 查询。
+- Adapter import for MCP tools。
+
+成功标准：不同 agent 可以通过 MCP 理解同一套 Huoban 对象。
+
+## Phase 4：Runtime 与 Registry
+
+目标：提供可执行 runtime 和本地 registry。
+
+交付物：
+
+- Flow execution。
+- Capability binding。
+- Adapter execution。
+- Policy enforcement。
+- Checkpoint handling。
+- Artifact tracking。
+- Local registry。
+
+不建议过早建设 hosted marketplace。
+
+## Phase 5：生态与治理
+
+目标：让 Huoban 从工具变成生态标准。
+
+重点：
+
+- 第三方 Adapter。
+- 第三方 validator。
+- 第三方 runtime。
+- 社区 capability taxonomy 讨论。
+- Conformance test suite。
+- Spec 版本治理。
+- Trust / signature / provenance 机制。
+
+## 早期不做
+
+为了保持方向清晰，早期不做：
+
+- 大而全 hosted registry。
+- Skill marketplace。
+- 完整 agent runner 平台。
+- 私有 SaaS 控制台。
+- 自动生成所有 flow 的一键魔法。
+- 绑定单一 agent 生态。
+
+## North-star metric
+
+早期最重要的指标不是 star 数，也不是下载量。
+
+更好的指标是：
+
+> Number of external Huoban objects authored by non-core contributors.
+
+包括：
+
+- 外部 `Profile`。
+- 外部 `Flow`。
+- 外部 `Skill` spec。
+- 外部 `Adapter`。
+- 第三方 validator / runtime 实验。
+- 围绕对象边界的 issue 和 PR。
+
+这说明 Huoban 正在成为语言，而不只是工具。

@@ -1,0 +1,56 @@
+---
+title: "Artifact 对象"
+sidebarTitle: "Artifact"
+description: "Artifact 是 Huoban 的产物对象，记录一次 Run 产生的文档、代码、diff、报告或决策记录。"
+---
+
+# Artifact 对象
+
+`Artifact` 是一次 AI 工作留下的可审查产物。它可以是文档、代码、diff、报告、评审意见、决策记录、测试结果或导出的 Profile。
+
+Artifact 让 Run 不只停留在聊天记录里。
+
+## spec 字段
+
+| 字段 | 要求 | 说明 |
+| --- | --- | --- |
+| `type` | 必填 | 产物类型，例如 `markdown`、`diff`、`profile`、`decision-notes`。 |
+| `runRef` | 推荐 | 产物来自哪个 Run。 |
+| `stage` | 可选 | 产物来自哪个 stage。 |
+| `contentRef` | 可选 | 指向文件、对象存储、git blob 或外部 URL。 |
+| `summary` | 可选 | 产物摘要。 |
+| `hash` | 推荐 | 内容 hash，用于复盘和完整性校验。 |
+| `review` | 可选 | 审查状态。 |
+
+## 最小示例
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Artifact
+metadata:
+  name: idea-review-notes
+spec:
+  type: decision-notes
+  runRef:
+    name: idea-to-spec-review-20260623
+  stage: sharpen-idea
+  contentRef:
+    type: file
+    path: artifacts/idea-review.md
+  hash: sha256:...
+  review:
+    status: pending
+```
+
+## status
+
+常见 conditions：
+
+- `ArtifactProduced`
+- `ArtifactIndexed`
+- `ArtifactReviewed`
+- `ArtifactRejected`
+
+## 设计约束
+
+Artifact 对象不一定内联大段内容。大内容应通过 `contentRef` 引用，避免 status 或 Run 对象膨胀。

@@ -1,0 +1,112 @@
+---
+title: "示例：idea-to-spec-review"
+sidebarTitle: "idea-to-spec-review"
+description: "Huoban 第一条 demo flow：从想法到规格审查，展示 Flow、Run、Checkpoint 和 Artifact。"
+---
+
+# 示例：idea-to-spec-review
+
+`idea-to-spec-review` 是 Huoban 的第一条推荐 demo flow。它展示一件事：已有 skill 可以被 Huoban 化，带着 Profile 组成 Flow，在 Checkpoint 停住，并产出可审查 Artifact。
+
+## Flow
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Flow
+metadata:
+  name: idea-to-spec-review
+spec:
+  profileRefs:
+    - name: huoban-open-source-project
+  policyRefs:
+    - name: safe-defaults
+  stages:
+    - id: sharpen-idea
+      requires:
+        capability: huoban.dev/designReview
+        role: primary-review
+      inputs:
+        - name: idea
+          from: user.prompt
+      outputs:
+        - name: review-notes
+          artifactType: decision-notes
+
+    - id: draft-spec-outline
+      requires:
+        capability: huoban.dev/specification
+        role: spec-writer
+      inputs:
+        - name: review-notes
+          from: stages.sharpen-idea.outputs.review-notes
+      outputs:
+        - name: spec-outline
+          artifactType: markdown
+
+  checkpoints:
+    - after: sharpen-idea
+      type: humanApproval
+      required: true
+      reason: ConfirmDirectionBeforeSpec
+```
+
+## Run
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Run
+metadata:
+  name: idea-to-spec-review-001
+spec:
+  flowRef:
+    name: idea-to-spec-review
+    generation: 1
+  mode: dryRun
+  bindings:
+    primary-review:
+      adapterRef: grill-me-skill-md
+    spec-writer:
+      skillRef: spec-outline-writer
+  snapshot:
+    flowSpecHash: sha256:...
+    profileSpecHash: sha256:...
+    skillBindingHash: sha256:...
+status:
+  phase: WaitingForCheckpoint
+  currentStage: sharpen-idea
+  conditions:
+    - type: RunPlanned
+      status: "True"
+      reason: DryRunGenerated
+    - type: CheckpointRequired
+      status: "True"
+      reason: ConfirmDirectionBeforeSpec
+```
+
+## Checkpoint
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Checkpoint
+metadata:
+  name: idea-to-spec-review-001-direction
+spec:
+  runRef:
+    name: idea-to-spec-review-001
+  stage: sharpen-idea
+  reason: ConfirmDirectionBeforeSpec
+  requiredActions:
+    - approve
+    - requestChanges
+    - reject
+  artifactRefs:
+    - name: review-notes
+```
+
+## 这个示例验证什么
+
+- Flow 引用 capability，而不是强依赖单一工具。
+- Run 解析具体 skill / adapter binding。
+- Profile 和 Policy 在 Run 中进入快照。
+- Checkpoint 是一等对象，不是聊天里的临时停顿。
+- Artifact 可以被复盘和审查。

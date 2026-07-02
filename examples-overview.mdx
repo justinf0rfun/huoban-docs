@@ -1,0 +1,38 @@
+---
+title: "示例总览"
+sidebarTitle: "总览"
+description: "Huoban 示例集合：Profile 导入、idea-to-spec-review Flow、SKILL.md Adapter。"
+---
+
+# 示例总览
+
+示例用于展示 Huoban 对象如何组合，而不是展示完整 runtime 行为。
+
+当前示例聚焦三个早期采用路径：
+
+<CardGroup cols={2}>
+  <Card title="Profile 导入" type="tip" icon="file-import" href="/example-import-agents-profile">
+    把现有 AGENTS.md 迁移为标准 Profile 对象。
+  </Card>
+
+  <Card title="Idea to Spec Review" type="tip" icon="route" href="/example-idea-to-spec-review">
+    用 Profile、Flow、Run、Checkpoint 串起第一条 demo flow。
+  </Card>
+
+  <Card title="SKILL.md Adapter" type="tip" icon="plug" href="/example-skill-md-adapter">
+    把外部 skill 适配为 Huoban Adapter。
+  </Card>
+</CardGroup>
+
+## 示例原则
+
+- 示例优先表达对象边界，不追求一次写满所有字段。
+- YAML 可以被 validator 使用，但 v0.1 阶段仍可能随 schema 调整。
+- 示例中出现的 hash、时间和路径是占位值。
+- 执行前应先 `validate` 和 `explain`，再考虑 `dry-run` 或 runtime 执行。
+
+## 推荐顺序
+
+1. 先看 [Profile 导入](/example-import-agents-profile)。
+2. 再看 [Idea to Spec Review](/example-idea-to-spec-review)。
+3. 最后看 [SKILL.md Adapter](/example-skill-md-adapter)。

@@ -1,0 +1,94 @@
+---
+title: "示例：SKILL.md Adapter"
+sidebarTitle: "SKILL.md Adapter"
+description: "把现有 SKILL.md 适配为 Huoban Adapter 的示例。"
+---
+
+# 示例：SKILL.md Adapter
+
+这个示例展示如何把现有 `SKILL.md` 迁移为 Huoban `Adapter`。
+
+导入命令：
+
+```bash
+huoban import skills/grill-me/SKILL.md --as Adapter --out adapters/grill-me.yaml
+```
+
+## Adapter
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Adapter
+metadata:
+  name: grill-me-skill-md
+  labels:
+    huoban.dev/imported-from: SKILL.md
+spec:
+  source:
+    type: skillMd
+    path: skills/grill-me/SKILL.md
+  capabilities:
+    - huoban.dev/designReview
+    - huoban.dev/planning
+  mapping:
+    inputs:
+      prompt: user.prompt
+      context: profile.effectiveContent
+    outputs:
+      review: artifact.decisionNotes
+  sideEffects:
+    declared:
+      - readFile
+      - writeFile
+  checkpoint:
+    recommended: true
+    reason: SkillProducesDesignJudgment
+  trustRef:
+    name: local-reviewed-grill-me
+status:
+  conditions:
+    - type: AdapterImported
+      status: "True"
+      reason: ImportedFromSkillMd
+    - type: ImportNeedsReview
+      status: "True"
+      reason: CapabilityAndSideEffectsInferred
+```
+
+## Trust
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Trust
+metadata:
+  name: local-reviewed-grill-me
+spec:
+  subjectRef:
+    kind: Adapter
+    name: grill-me-skill-md
+  source:
+    type: local
+    path: skills/grill-me/SKILL.md
+  level: reviewed
+  review:
+    reviewer: core-maintainer
+    reviewedAt: "2026-06-23T12:00:00Z"
+    conclusion: approved-for-local-use
+  sandbox:
+    required: true
+    network: deny
+```
+
+## 重要边界
+
+导入 `SKILL.md` 不应直接生成 trusted Skill。
+
+默认结果应是 Adapter，因为原始 skill 通常缺少：
+
+- 标准 capability 声明。
+- 输入输出 schema。
+- declared side effects。
+- checkpoint 语义。
+- trust 元数据。
+
+这些信息补齐并经过 review 后，Adapter 才能被更高等级 runtime 使用。

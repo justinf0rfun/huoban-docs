@@ -1,0 +1,110 @@
+---
+title: "规范参考总览"
+sidebarTitle: "总览"
+description: "Huoban v0.1 对象规范的阅读入口：版本、字段约定、对象分类和实现边界。"
+---
+
+# 规范参考总览
+
+Huoban 规范参考面向实现者、Adapter 作者、工具作者和标准贡献者。它回答的问题不是“Huoban 为什么存在”，而是“一个 Huoban 对象应该长什么样”。
+
+当前参考版本为 `huoban.dev/v1alpha1`。
+
+## 资源对象格式
+
+所有 Huoban 对象共享同一外壳：
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Flow
+metadata:
+  name: idea-to-spec-review
+spec:
+  ...
+status:
+  ...
+```
+
+字段约定：
+
+| 字段 | 要求 | 说明 |
+| --- | --- | --- |
+| `apiVersion` | 必填 | 对象 API 版本。v0.1 使用 `huoban.dev/v1alpha1`。 |
+| `kind` | 必填 | 对象类型，例如 `Skill`、`Profile`、`Flow`。 |
+| `metadata` | 必填 | 名称、标签、generation、来源和所有权。 |
+| `spec` | 必填 | 作者声明的期望状态。 |
+| `status` | 可选 | runtime 观察到的实际状态，只能由 runtime 写入。 |
+
+## 对象分类
+
+Core API Objects 是最小兼容 runtime 必须理解的对象：
+
+- [`Skill`](/spec-skill)
+- [`Profile`](/spec-profile)
+- [`Flow`](/spec-flow)
+- [`Run`](/spec-run)
+- [`Checkpoint`](/spec-checkpoint)
+
+Standard Extension Objects 在 v0.1 中定义，但 runtime 可以按兼容等级选择支持：
+
+- [`Policy`](/spec-policy)
+- [`Adapter`](/spec-adapter)
+- [`Artifact`](/spec-artifact)
+- [`Registry`](/spec-registry)
+- [`Trust`](/spec-trust)
+
+更多扩展对象，例如 `Eval`、`Context`、`Tool`、`Resource`、`Prompt`、`Runtime`、`Binding`，会在后续 reference 中继续拆页。
+
+## spec / status 边界
+
+`spec` 是用户或上游系统声明的期望状态，`status` 是 runtime 观察到的事实。
+
+不要把运行日志、临时命令、artifact 内容和用户期望混在 `spec` 里。状态应该进入 `status.phase`、`status.conditions`、`status.observedSideEffects` 或专门的 `Artifact` 对象。
+
+## Conditions
+
+Huoban 使用 `conditions` 表达细粒度状态。一个 condition 至少应包含：
+
+```yaml
+type: FlowValidated
+status: "True"
+reason: SchemaValid
+message: "Flow passed schema validation."
+lastTransitionTime: "2026-06-23T12:00:00Z"
+```
+
+推荐字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| `type` | 条件类型，例如 `ProfileResolved`、`CheckpointRequired`。 |
+| `status` | `True`、`False` 或 `Unknown`。 |
+| `reason` | 稳定、机器可读的原因。 |
+| `message` | 面向人的解释。 |
+| `lastTransitionTime` | 状态变化时间。 |
+
+## generation
+
+对象 `spec` 发生语义变化时，`metadata.generation` 应递增。runtime 写入 `status.observedGeneration`，表示当前状态对应哪一代 spec。
+
+```yaml
+metadata:
+  generation: 3
+status:
+  observedGeneration: 2
+```
+
+如果二者不一致，说明 status 还没有追上最新 spec。
+
+## 实现建议
+
+v0.1 实现不需要一次支持全部对象。推荐顺序：
+
+1. 支持读取与校验 `apiVersion / kind / metadata / spec`。
+2. 支持 `Profile` import / export。
+3. 支持 `Flow` explain / dry-run。
+4. 支持 `Run` snapshot。
+5. 支持 `Policy` 与 side effects。
+6. 支持 `Adapter` 与外部生态迁移。
+
+参见 [兼容等级](/conformance)。
