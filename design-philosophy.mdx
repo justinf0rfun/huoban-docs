@@ -4,23 +4,38 @@ sidebarTitle: "设计哲学"
 description: "Huoban 活板的设计哲学来自活字印刷术：可排版、可润墨、可印刷。"
 ---
 
+Huoban 活板的设计哲学来自活字印刷术。
+
 活字印刷术的突破不在于“有字”。字早就存在。真正的突破在于：字可以被标准化、收纳、选择、排布、润墨、试印、校对、印刷、拆版、复用。
 
 “活板”是这个隐喻的核心：不是把 AI 能力固定成一整块雕版，而是把 skill、context、flow、checkpoint、policy 和 artifact 做成可以拆开、重排、润墨、校对、复印的开放编排结构。
 
-Huoban 把同样的思想应用到 AI 系统：把能力、上下文、编排、执行快照、校对、权限和产物拆成可以验证、组合、迁移和审查的标准对象。
+Huoban 是 AI 系统的开放编排协议：可排版、可润墨、可印刷。
+
+<CardGroup cols={2}>
+  <Card title="可排版" icon="layer-group" type="tip" color="#16A34A">
+    把能力、阶段、校对点和产物排成可验证、可复用的 Flow。
+  </Card>
+  <Card title="可润墨" icon="brush" type="tip" color="#16A34A">
+    把团队规范、项目历史、架构边界和领域语言注入成分层 Profile。
+  </Card>
+  <Card title="可印刷" icon="print" type="tip" color="#16A34A">
+    通过 Run 快照、Policy、Checkpoint 和 dry-run，让一次 AI 工作可以追溯和复盘。
+  </Card>
+  <Card title="开放标准" icon="code" type="tip" color="#16A34A">
+    用声明式对象描述 AI 原生工作，保持工具、模型和执行环境可替换。
+  </Card>
+</CardGroup>
 
 ## 核心判断
 
-AI 原生工作可以被理解为一套排印流程：
+AI 原生工作不应该只停留在 prompt、聊天记录或某个单一工具里。它应该被拆成一组清晰的标准对象：
 
-- `Skill` 是活字：原子、独立、可复用。
-- `Profile` 是墨方：分层上下文，不改变活字本身，但改变判断标准和输出重点。
-- `Flow` 是版式：为当前任务安排 capability、stage、checkpoint 和 artifact。
-- `Run` 是锁版印刷：一次具体执行中的锁定快照。
-- `Checkpoint` 是校对：人或系统判断是否继续、修改或拒绝。
-- `Policy` 是印坊规矩：声明副作用、审批和权限边界。
-- `Adapter` 是异形活字转接件：把外部能力或导入格式标准化成可编排对象。
+- 能力要像活字一样可选择、可组合、可复用。
+- 上下文要像墨方一样可分层、可替换、可注入。
+- 编排要像版式一样显式描述顺序、依赖、停顿和产物。
+- 执行要像锁版印刷一样形成一次可追溯快照。
+- 风险判断要像校对一样成为一等对象，而不是隐藏在临时对话里。
 
 Huoban 的目标，是让 AI 工作变得明确、可编程、可检查、可复用、可分享。
 
@@ -28,15 +43,42 @@ Huoban 的目标，是让 AI 工作变得明确、可编程、可检查、可复
 
 | Huoban 对象 | 活字印刷对应物 | 设计含义 |
 | --- | --- | --- |
-| `Skill` | 活字 | 原子能力，可被不同 flow 反复选择和重排。 |
+| `Skill` | 活字 | 原子能力，可被不同 Flow 反复选择和重排。 |
 | `Profile` | 墨方 | 团队、项目、架构、领域、风格、历史和风险上下文。 |
 | `Flow` | 版式 | 能力之间的顺序、输入输出、停顿和产物。 |
 | `Run` | 锁版印刷 | 冻结 Flow、Profile、Policy 和 binding 的一次执行快照。 |
 | `Checkpoint` | 校对 | 高判断力或高风险节点的人工或系统决策边界。 |
 | `Policy` | 印坊规矩 | 自动化边界、审批规则和危险动作限制。 |
+| `Adapter` | 异形活字转接件 | 把外部能力或导入格式标准化成可编排对象。 |
 | `Artifact` | 印张 | 代码 diff、文档、报告、决策记录等产物。 |
 | `Registry` | 字架 | 组织、索引和发现可用对象。 |
 | `Trust` | 审校记录 | 记录来源、审查、信任等级和 sandbox 要求。 |
+
+## 排印流程
+
+<Steps>
+  <Step title="取字：选择能力">
+    从 Registry 中选择满足 capability 的 `Skill`。Skill 应该原子、独立、可复用，并显式声明输入、输出和副作用。
+  </Step>
+  <Step title="排版：组织 Flow">
+    用 `Flow` 安排 stage、capability、artifact 和 checkpoint。Flow 描述的是工作如何被编排，不是某个工具的按钮顺序。
+  </Step>
+  <Step title="润墨：注入 Profile">
+    用 `Profile` 注入团队规范、项目结构、领域语言、历史决策和输出要求。Profile 改变判断标准，不改变 Skill 本身。
+  </Step>
+  <Step title="立规：套用 Policy">
+    用 `Policy` 声明副作用、审批、权限和危险动作边界。能自动执行的动作和必须人工确认的动作要分开。
+  </Step>
+  <Step title="锁版：生成 Run">
+    用 `Run` 锁定一次执行使用的 Flow、Profile、Policy、binding 和输入。Run 是之后追溯、复盘和比较的事实来源。
+  </Step>
+  <Step title="校对：进入 Checkpoint">
+    在高判断力或高风险节点进入 `Checkpoint`。人或系统可以 approve、request changes 或 reject。
+  </Step>
+  <Step title="付印：产出 Artifact">
+    把代码 diff、文档、报告、决策记录或发布结果保存为 `Artifact`，让结果可以被审查、复用和分享。
+  </Step>
+</Steps>
 
 ## Skill 是活字
 
@@ -104,9 +146,9 @@ spec:
       reason: ConfirmDirectionBeforeSpec
 ```
 
-## Context 是润墨
+## Profile 是润墨
 
-同一枚活字，用不同墨色印出来，字形没变，但气质和用途变了。同一个 skill，在不同上下文里运行，能力没变，但判断标准变了。
+同一枚活字，用不同墨色印出来，字形没变，但气质和用途变了。同一个 Skill，在不同上下文里运行，能力没变，但判断标准变了。
 
 这就是 `Profile` 的位置。项目语言、架构边界、领域术语、历史决策、测试习惯和风险规则，都应该作为运行时上下文显式注入，而不是散落在临时 prompt 或聊天历史里。
 
@@ -130,16 +172,35 @@ spec:
     - reject
 ```
 
+## 设计边界
+
+<CardGroup cols={2}>
+  <Card title="先标准，后 runtime" icon="book-open" type="tip" color="#16A34A">
+    Huoban 先定义对象模型、schema、examples 和验证路径。runtime 可以随后出现，但不能反过来决定标准。
+  </Card>
+  <Card title="公共标准与公司实践分开" icon="shield-check" type="tip" color="#16A34A">
+    公司内部流程可以反馈标准，但不能把一次私有实践直接提升为公共对象。
+  </Card>
+  <Card title="上下文必须显式" icon="file-code" type="tip" color="#16A34A">
+    AGENTS.md、CLAUDE.md、Cursor Rules 等上下文资产应进入 Profile 或 Adapter，而不是停留在不可验证的聊天历史里。
+  </Card>
+  <Card title="副作用必须可见" icon="plug" type="tip" color="#16A34A">
+    读写文件、执行命令、访问网络、发布远端变更或使用密钥，都应该进入 Policy、Run 和 Trust 的审查范围。
+  </Card>
+</CardGroup>
+
 ## 设计原则
 
 1. 标准化活字，不标准化文章。
 2. Skill 尽量无状态。
-3. Context 是运行时层。
-4. 副作用必须可见。
-5. 校对是一等能力。
-6. 优先适配现有能力，不急着替代已有生态。
-7. Flow 也应该可分享。
-8. 文化隐喻必须进入结构，而不是停留在命名和文案上。
+3. Profile 是运行时上下文层。
+4. Flow 描述能力编排，不绑定单一执行环境。
+5. Run 必须可追溯。
+6. 副作用必须可见。
+7. 校对是一等能力。
+8. 优先适配现有能力，不急着替代已有生态。
+9. Flow 也应该可分享。
+10. 文化隐喻必须进入结构，而不是停留在命名和文案上。
 
 ## 一句话定位
 
