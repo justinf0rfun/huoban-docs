@@ -4,26 +4,28 @@ description: "Huoban（Huó Bǎn）是 AI 系统的开放编排协议。"
 sidebarTitle: "简介"
 ---
 
-Huoban 定义 AI 原生工作的**对象语言**，让 AI 工作 **可排版、可润墨、可印刷**：用一组**可验证、可组合、可审查**的标准对象，描述 `skill`、`context`、`flow`、`run`、`checkpoint`、`policy`、`adapter` 和 `artifact`，让不同 agent、tool、MCP server 和项目上下文可以共享同一套编排语义。
+Huoban 定义 AI 原生工作的**对象语言**，让 AI 工作 **可排版、可润墨、可印刷**。
 
-今天的 `skill`、`MCP tool`、`AGENTS.md`、`CLAUDE.md`、`Cursor Rules`、prompt、workflow 和执行记录分散在不同工具里。Huoban 把这些资产收敛为**标准对象**，让 AI 工作可以被描述、复用、迁移和治理。
+Huoban 的最小不可替代价值是：把一次 AI 工作拆成**可验证、可组合、可审查**的标准对象，而不是绑定在某个 agent、聊天记录或私有 workflow 里。它用 `Skill`、`Profile`、`Flow`、`Run`、`Checkpoint`、`Policy`、`Adapter`、`Artifact`、`Registry` 和 `Trust` 描述 AI 工作，让不同 agent、tool、MCP server 和项目上下文可以共享同一套编排语义。
 
-如果用当前行业语言描述，Huoban 处理的是 **context engineering**、**skill reuse** 和 **agent loop standardization** 的交叉问题：上下文如何结构化，能力如何复用，循环如何在 `checkpoint`、`policy` 和 `artifact` 中留下可审查记录。
+今天的 skill、MCP tool、AGENTS.md、CLAUDE.md、Cursor Rules、prompt、workflow 和执行记录分散在不同工具里。Huoban 把这些资产收敛为标准对象，让 AI 工作可以被描述、复用、迁移和治理。
+
+如果用当前行业语言描述，Huoban 处理的是 **context engineering**、**skill reuse** 和 **agent loop standardization** 的交叉问题：上下文如何结构化，能力如何复用，循环如何在 `Checkpoint`、`Policy` 和 `Artifact` 中留下可审查记录。
 
 Huoban 活板的设计哲学来自**活字印刷术**。它把 `Skill` 理解为活字，把 `Profile` 理解为墨方，把 `Flow` 理解为版式，把 `Run` 理解为锁版印刷，把 `Checkpoint` 理解为校对，把 `Policy` 理解为印坊规矩。
 
 <CardGroup cols={2}>
   <Card title="可排版" icon="layer-group" type="tip" color="#16A34A">
-    `Flow` 把 skill、capability、stage、checkpoint 和 artifact 排成可验证、可复用的编排。
+    `Flow` 把 capability、stage、checkpoint 和产物声明排成可验证、可复用的编排。
   </Card>
   <Card title="可润墨" icon="brush" type="tip" color="#16A34A">
-    `Profile` 把 AGENTS.md、CLAUDE.md、Cursor Rules 和项目知识升级成分层上下文。
+    `Profile` 把 AGENTS.md、CLAUDE.md、Cursor Rules 和项目知识导入、整理为需要审查的分层上下文。
   </Card>
   <Card title="可印刷" icon="print" type="tip" color="#16A34A">
-    `Run`、`Policy` 和 `Checkpoint` 把一次 AI 工作固定成可追溯、可审查的执行。
+    `Run` 锁定一次执行；`Policy` 声明副作用和审批边界；`Checkpoint` 声明显式决策动作。
   </Card>
   <Card title="开放标准" icon="code" type="tip" color="#16A34A">
-    对象模型优先，工具、模型、MCP server 和执行环境都可以替换。
+    对象模型优先，不把协议绑定到单一工具、模型、MCP server 或执行环境。
   </Card>
 </CardGroup>
 
@@ -34,13 +36,13 @@ Huoban 活板的设计哲学来自**活字印刷术**。它把 `Skill` 理解为
 | `Skill` | 活字 | 声明可复用能力、输入输出和副作用。 |
 | `Profile` | 墨方 | 声明分层上下文、项目约束和团队规则。 |
 | `Flow` | 版式 | 声明 capability-first 的编排、阶段、停顿和产物。 |
-| `Run` | 锁版印刷 | 冻结一次执行的对象快照、输入和 binding。 |
+| `Run` | 锁版印刷 | 锁定一次执行的对象引用、mode、bindings，并可记录 flow/profile/binding hash。 |
 | `Checkpoint` | 校对 | 声明人类或系统必须判断的决策边界。 |
 | `Policy` | 印坊规矩 | 声明权限、副作用、审批和危险动作限制。 |
-| `Adapter` | 转接件 | 标准化现有 skill、MCP tool 或上下文文件。 |
+| `Adapter` | 转接件 | 描述外部 skill、MCP tool、导入格式或外部能力如何进入 Huoban。 |
 | `Artifact` | 印张 | 记录工作流产出的文档、报告、代码或决策。 |
-| `Registry` | 字架 | 组织、索引和发现可复用对象。 |
-| `Trust` | 验字记录 | 记录来源、审查、信任等级和安全要求。 |
+| `Registry` | 字架 | 组织对象来源和索引范围。 |
+| `Trust` | 来源信任记录 | 记录对象来源、审查、信任等级和 sandbox 要求。 |
 
 ## 推荐阅读
 
