@@ -4,15 +4,106 @@ sidebarTitle: "对象模型"
 description: "Huoban 的声明式资源对象模型、核心对象、扩展对象和状态边界。"
 ---
 
-# 对象模型
+Huoban 的对象模型定义 AI 原生工作的最小可描述结构。
 
-Huoban 的核心资产是对象模型。
+它不从“如何执行命令”开始，而是从“如何描述 AI 原生工作”开始：能力是什么，上下文是什么，如何编排，在哪些边界停下，允许哪些副作用，产物如何留下，来源是否可信。
 
-它不从“如何执行命令”开始，而是从“如何描述 AI 原生工作”开始。执行器、MCP server、CLI、IDE 插件和 agent runtime 都可以实现 Huoban，但它们不应该反过来定义 Huoban。
+AGENTS.md、CLAUDE.md、Cursor Rules 和 SKILL.md 都是重要入口，但它们通常把上下文、能力、权限、执行意图和审查边界混在自然语言里。Huoban 对象模型的作用，是把这些内容拆成不同职责的对象：上下文进入 `Profile`，能力进入 `Skill` 或 `Adapter`，权限进入 `Policy`，编排进入 `Flow`，执行快照进入 `Run`，决策边界进入 `Checkpoint`。
 
-## 基本结构
+<CardGroup cols={2}>
+  <Card title="对象优先" icon="boxes" type="tip" color="#16A34A">
+    Huoban 先定义 AI 工作的标准对象，而不是先定义某个工具的调用方式。
+  </Card>
+  <Card title="职责分离" icon="route" type="tip" color="#16A34A">
+    能力、上下文、编排、权限、执行、校对、产物和信任分别由不同对象表达。
+  </Card>
+  <Card title="声明与观察分离" icon="shield-check" type="tip" color="#16A34A">
+    `spec` 表达期望结构，`status` 表达工具或系统观察到的处理状态。
+  </Card>
+  <Card title="非脚本格式" icon="code" type="tip" color="#16A34A">
+    核心对象描述工作结构，不把 shell 命令、模型参数或工具私有字段作为中心。
+  </Card>
+</CardGroup>
 
-Huoban 对象采用声明式资源对象模型：
+## 最小对象链路
+
+Huoban 的对象不是平铺词表，而是一条 AI 工作链路。Core 对象构成最小描述链；完整治理链路还需要 Standard Extension 中的 `Policy`、`Artifact`、`Registry` 和 `Trust` 补齐治理、导入、产物、索引和信任。
+
+<Steps>
+  <Step title="能力：Skill">
+    `Skill` 声明可复用能力、输入输出、上下文提示和副作用。
+  </Step>
+  <Step title="上下文：Profile">
+    `Profile` 把团队规则、项目结构、领域语言和历史决策整理成分层上下文。
+  </Step>
+  <Step title="编排：Flow">
+    `Flow` 通过 capability-first stage 描述能力如何排列、产物声明如何传递、哪里需要 checkpoint。
+  </Step>
+  <Step title="边界：Policy">
+    `Policy` 声明副作用、权限和审批规则，让自动化边界可审查。
+  </Step>
+  <Step title="快照：Run">
+    `Run` 锁定一次工作使用的对象引用、mode、bindings 和当前 schema 支持的 snapshot hash。
+  </Step>
+  <Step title="校对：Checkpoint">
+    `Checkpoint` 把高判断力或高风险位置变成显式决策边界。
+  </Step>
+  <Step title="产物：Artifact">
+    `Artifact` 记录一次 Run 产生的文档、报告、代码、diff 或决策记录。
+  </Step>
+  <Step title="来源：Registry 与 Trust">
+    `Registry` 组织对象来源和索引范围，`Trust` 记录对象来源、审查状态、信任等级和 sandbox 要求。
+  </Step>
+</Steps>
+
+`Artifact` 不在 Core，是为了降低最小实现门槛；但在完整工作链路中，它是产物审查和复用的事实载体。
+
+## 对象分层
+
+### Core API Objects
+
+Core 对象构成 AI 工作的最小描述链：能力、上下文、编排、执行快照和决策边界。
+
+| 对象 | 职责 | v1alpha1 字段锚点 |
+| --- | --- | --- |
+| `Skill` | 声明可复用能力。 | `capabilities`、`inputs`、`outputs`、`profileHints`、`sideEffects`、`checkpoint`、`adapterRef` |
+| `Profile` | 声明分层上下文。 | `layers`、`merge`、`policyRefs` |
+| `Flow` | 声明 capability-first 编排。 | `profileRefs`、`policyRefs`、`stages`、`checkpoints` |
+| `Run` | 锁定一次 AI 工作的执行视图。 | `flowRef`、`profileRefs`、`policyRefs`、`mode`、`bindings`、`snapshot` |
+| `Checkpoint` | 声明必须显式处理的决策边界。 | `runRef`、`stage`、`reason`、`requiredActions`、`artifactRefs`、`expiresAt` |
+
+### Standard Extension Objects
+
+Extension 对象不改变最小链路，但补齐治理、导入、产物、索引和信任。
+
+| 对象 | 职责 | v1alpha1 字段锚点 |
+| --- | --- | --- |
+| `Policy` | 声明权限、副作用、审批和危险动作限制。 | `rules`、`defaults.unknownSideEffect`、`effect`、`when.capabilities`、`when.sideEffects`、`when.trustLevels` |
+| `Adapter` | 标准化外部 skill、MCP tool、导入格式或外部能力。 | `source`、`capabilities`、`mapping`、`sideEffects`、`checkpoint`、`trustRef`、`fallback` |
+| `Artifact` | 记录一次工作产生的可审查产物。 | `type`、`runRef`、`stage`、`contentRef`、`summary`、`hash`、`review` |
+| `Registry` | 组织对象来源和索引范围。 | `sources`、`index.includeKinds`、`trustPolicyRef` |
+| `Trust` | 记录对象来源、审查状态、信任等级和 sandbox 要求。 | `subjectRef`、`source`、`level`、`review`、`signatures`、`sandbox`、`policyRefs` |
+
+## 未进入 v1alpha1 的候选方向
+
+下列概念目前不是 v1alpha1 schema 对象。它们可以作为未来候选对象、实现扩展或已存在对象的内部语义出现，但不属于当前公共对象模型。
+
+| 候选概念 | v1alpha1 当前表达 | 可能提升为对象的条件 |
+| --- | --- | --- |
+| `Eval` | 可先作为 `Artifact.review`、`Checkpoint` reason 或实现侧检查存在。 | 出现稳定、可复用的校样 schema 和 examples。 |
+| `Context` | 结构化上下文进入 `Profile.layers`，外部内容引用可进入 `Artifact.contentRef`。 | 需要跨 Profile、Artifact、Adapter 的独立上下文生命周期。 |
+| `Permission` | 权限和审批边界进入 `Policy.rules`。 | 需要比 Policy 更细的授权对象，并有重复 workflow 证据。 |
+| `Tool` | 外部工具能力通过 `Adapter.source` 和 `Adapter.capabilities` 表达。 | 工具描述需要脱离 Adapter 独立复用。 |
+| `Resource` | 可读取资源可通过 `Profile.layers`、`Artifact.contentRef` 或 Adapter 实现语义表达。 | 资源需要独立权限、信任和生命周期管理。 |
+| `Prompt` | 可复用提示可作为 `Skill` 的实现材料或 Adapter 来源。 | prompt 本身需要成为可验证、可版本化、可组合对象。 |
+| `Runtime` | 执行环境属于实现侧或兼容等级说明。 | 执行环境声明需要进入跨实现互操作协议。 |
+| 独立 `Binding` | 当前由 `Run.spec.bindings` 表达 capability 到 `Skill` 或 `Adapter` 的绑定结果。 | binding 需要跨 Run 复用、审查或签名。 |
+
+这条边界很重要：没有 schema 和 examples 支撑的概念，不应该被写成已经稳定的公共标准对象。
+
+## 资源对象格式
+
+Huoban 对象采用声明式资源对象格式：
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
@@ -31,81 +122,29 @@ status:
 | --- | --- |
 | `apiVersion` | 对象 API 版本，例如 `huoban.dev/v1alpha1`。 |
 | `kind` | 对象类型，例如 `Skill`、`Profile`、`Flow`、`Run`。 |
-| `metadata` | 名称、标签、版本、generation、来源等元信息。 |
-| `spec` | 用户声明的期望状态。 |
-| `status` | runtime 观察到的实际状态。 |
+| `metadata` | 名称、标签、annotations 和 generation 等元信息。 |
+| `spec` | 作者声明的期望对象结构。 |
+| `status` | 工具或系统观察到的处理状态。 |
 
-## Core API Objects
-
-Core 对象是最小 Huoban runtime 必须理解的对象。
-
-### Skill
-
-`Skill` 是可复用的原子能力。
-
-它声明自己能做什么、输入输出是什么、需要什么上下文、可能产生什么副作用，以及是否天然需要 checkpoint。
-
-### Profile
-
-`Profile` 是分层上下文对象。
-
-它把 `AGENTS.md`、`CLAUDE.md`、Cursor Rules、团队规范和项目知识升级成可合并、可校验、可快照的上下文层。
-
-### Flow
-
-`Flow` 是能力编排版式。
-
-它描述 stage、capability、输入输出、checkpoint、artifact、policy 以及 profile 默认引用。
-
-### Run
-
-`Run` 是一次具体执行。
-
-Run 必须锁定当时使用的 Flow、Profile、Skill binding 和 Policy 快照，确保执行可复盘、可审计、可解释。
-
-### Checkpoint
-
-`Checkpoint` 是校对点。
-
-它表示 runtime 不能或不应该继续自动执行，需要人或规则确认、修改、拒绝或回退。
-
-## Standard Extension Objects
-
-Huoban v0.1 应定义完整对象宇宙，但通过兼容等级降低实现门槛。
-
-扩展对象包括：
-
-- `Artifact`：一次 Run 产生的代码、文档、报告、diff 或决策记录。
-- `Adapter`：把外部 skill、MCP tool 或上下文文件等外部能力转成 Huoban 兼容对象。
-- `Policy`：权限、副作用、审批和风险规则。
-- `Eval`：可重复执行的校样标准。
-- `Registry`：字架，用于组织和发现 Skill / Adapter / Flow。
-- `Context`：运行时上下文材料或引用。
-- `Permission`：更细粒度的能力授权。
-- `Tool`：可被 runtime 调用的外部工具描述。
-- `Resource`：可被 agent 读取的上下文资源。
-- `Prompt`：可复用的提示模板。
-- `Runtime`：执行环境声明。
-- `Binding`：capability 到具体 skill 或 adapter 的解析结果。
-- `Trust`：来源、签名、审计、review 和 sandbox 的信任信息。
+`status` 是可选字段。schema 校验字段形状，`generation` 递增和 `observedGeneration` 更新由工具或实现约定维护。
 
 ## spec 与 status
 
-Huoban 必须保持 `spec` 与 `status` 的边界。
+Huoban 必须保持 `spec` 与 `status` 的边界。`spec` 说明“想要什么”，`status` 说明“已经观察到什么”。
 
-用户、作者或上游系统写 `spec`：
+作者或上游系统写 `spec`：
 
 ```yaml
 spec:
   profileRefs:
-    - project-profile
+    - name: project-profile
   stages:
     - id: review
       requires:
         capability: huoban.dev/designReview
 ```
 
-runtime 写 `status`：
+工具或系统写 `status`：
 
 ```yaml
 status:
@@ -121,7 +160,7 @@ status:
 
 ## generation 与 observedGeneration
 
-Huoban 对象应支持：
+Huoban 对象支持：
 
 ```yaml
 metadata:
@@ -134,27 +173,27 @@ status:
 
 - `metadata.generation` 在 `spec` 发生语义变化时递增。
 - `status.observedGeneration` 表示当前 status 对应哪个 generation。
-- 如果二者不一致，说明 runtime 状态还没有追上当前 spec。
+- 如果二者不一致，说明观察状态还没有追上当前 spec。
 
 这能避免用户修改 Flow 或 Profile 后误读旧状态。
 
 ## Conditions
 
-`conditions` 是 Huoban 的一等状态表达。
+`conditions` 是机器可读的状态摘要。它不替代日志、产物正文或审查结论。
 
-建议条件类型包括：
+示例 condition type 包括但不限于：
 
 - `SkillResolved`
 - `ProfileResolved`
 - `FlowValidated`
 - `PolicyChecked`
 - `AdapterBound`
+- `RegistryLoaded`
+- `TrustResolved`
 - `RunPlanned`
 - `StageStarted`
 - `StageCompleted`
 - `ArtifactProduced`
-- `EvalPassed`
-- `EvalFailed`
 - `CheckpointRequired`
 - `CheckpointApproved`
 - `RunCompleted`
@@ -162,16 +201,22 @@ status:
 - `ProfileConflictDetected`
 - `UndeclaredSideEffectObserved`
 
-## 不做过程式脚本
+实现可以定义额外 condition type，但必须保持 `type`、`status`、`reason` 的机器可读结构。
 
-核心对象模型不应暴露太多执行命令：
+## 非目标：不做过程式脚本
+
+Huoban 的核心对象不描述“执行哪条命令”，而描述“这项 AI 工作需要什么能力、使用什么上下文、遵守什么边界、在哪里校对、留下什么产物”。
+
+核心对象模型不应以这些字段为中心：
 
 ```yaml
 run: claude -p "..."
 shell: ...
 command: ...
+model: ...
+toolArgs: ...
 ```
 
-这些字段可以存在于 Adapter 或 runtime-specific extension 中，但不应成为核心 spec 的中心。
+命令、执行器参数、模型调用细节和工具私有字段不得进入核心对象字段。如需保留，只能放在 schema 已允许的 `Adapter` 子结构或实现私有扩展中。
 
-Huoban 要描述“期望的 AI 工作结构”，而不是把自己变成 CI 脚本格式。
+Huoban 要描述期望的 AI 工作结构，而不是把自己变成 CI 脚本格式。
