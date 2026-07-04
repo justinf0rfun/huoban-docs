@@ -1,0 +1,42 @@
+<svg width="480" height="480" viewBox="0 0 480 480" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Huoban Logo</title>
+  <desc id="desc">Modular movable type on a composing bed.</desc>
+  <rect width="480" height="480" rx="40" fill="#FFFFFF"/>
+  <g id="mark">
+    <rect x="120" y="96" width="240" height="240" rx="60" fill="#BBF7D0"/>
+    <rect x="160" y="136" width="70" height="70" rx="20" fill="#16A34A"/>
+    <rect x="250" y="136" width="70" height="50" rx="20" fill="#22C55E"/>
+    <rect x="160" y="226" width="50" height="70" rx="20" fill="#15803D"/>
+    <rect x="230" y="226" width="90" height="70" rx="20" fill="#16A34A"/>
+  </g>
+  <g id="wordmark" transform="translate(150 380)">
+    <rect x="0" y="0" width="13" height="76" fill="#14532D"/>
+    <rect x="44" y="0" width="13" height="76" fill="#14532D"/>
+    <rect x="0" y="32" width="57" height="13" fill="#14532D"/>
+    <rect x="69" y="13" width="13" height="63" fill="#14532D"/>
+    <rect x="107" y="13" width="13" height="63" fill="#14532D"/>
+    <rect x="69" y="51" width="51" height="13" fill="#14532D"/>
+    <rect x="133" y="13" width="51" height="13" fill="#14532D"/>
+    <rect x="133" y="51" width="51" height="13" fill="#14532D"/>
+    <rect x="133" y="13" width="13" height="51" fill="#14532D"/>
+    <rect x="171" y="13" width="13" height="51" fill="#14532D"/>
+    <rect x="196" y="13" width="13" height="76" fill="#14532D"/>
+    <rect x="196" y="51" width="38" height="13" fill="#14532D"/>
+    <rect x="221" y="13" width="13" height="51" fill="#14532D"/>
+    <rect x="246" y="38" width="13" height="38" fill="#14532D"/>
+    <rect x="272" y="13" width="13" height="76" fill="#14532D"/>
+    <rect x="272" y="38" width="38" height="13" fill="#14532D"/>
+    <rect x="297" y="13" width="13" height="38" fill="#14532D"/>
+    <rect x="322" y="13" width="13" height="76" fill="#14532D"/>
+    <rect x="347" y="13" width="13" height="76" fill="#14532D"/>
+    <rect x="322" y="38" width="38" height="13" fill="#14532D"/>
+  </g>
+  <g transform="translate(200 420)" fill="#16A34A">
+    <rect width="80" height="12" rx="3"/>
+  </g>
+  <g transform="translate(120 452)" fill="#4B5563">
+    <rect width="80" height="8" rx="2"/>
+    <rect x="100" width="80" height="8" rx="2"/>
+    <rect x="200" width="80" height="8" rx="2"/>
+  </g>
+</svg>
