@@ -1,0 +1,249 @@
+---
+title: "Registry 模型"
+sidebarTitle: "Registry 模型"
+description: "Registry 是 Huoban 的字架：声明对象来源和索引范围，让标准对象可以被发现、校验和复用。"
+---
+
+`Registry` 是 Huoban 的字架：声明对象来源和索引范围，让 `Skill`、`Adapter`、`Flow`、`Profile`、`Policy`、`Artifact` 和 `Trust` 可以被发现、校验和复用。
+
+它不是 marketplace，也不是对象仓库。`Registry` 不托管对象、不发布对象、不排序推荐对象、不选择对象，也不证明对象可信。
+
+本页是扩展对象概念页，解释 `Registry` 的设计边界和使用模型；字段级定义、必填项和 schema 约束见 [Registry 规范](/spec-registry)。
+
+<CardGroup cols={2}>
+  <Card title="声明对象来源" icon="boxes" type="tip" color="#16A34A">
+    `sources` 声明对象从本地、Git、HTTP 或 MCP 来源被发现。
+  </Card>
+  <Card title="限定索引范围" icon="file-code" type="tip" color="#16A34A">
+    `index.includeKinds` 是 kind 过滤范围，不是对象清单、排序规则或 capability 索引。
+  </Card>
+  <Card title="引用信任策略" icon="shield-check" type="tip" color="#16A34A">
+    `trustPolicyRef` 引用信任策略对象；进入 Registry 不等于可信。
+  </Card>
+  <Card title="服务复用" icon="route" type="tip" color="#16A34A">
+    Registry 帮助工具找到候选对象，但不替代 Flow、Run binding 或 runtime 选择。
+  </Card>
+</CardGroup>
+
+## Registry 不是 marketplace
+
+`Registry` 的第一性职责是声明对象来源和索引范围，而不是建设分发平台。
+
+| 对象 | 职责 | 不承担 |
+| --- | --- | --- |
+| `Registry` | 声明从哪里发现对象、索引哪些 kind、应用哪个 trust policy。 | 不托管对象，不排名推荐，不选择对象，不证明可信。 |
+| `Skill` | 声明 Huoban 原生或已标准化能力。 | 不声明对象从哪里被发现。 |
+| `Adapter` | 声明外部能力如何进入 Huoban。 | 不管理对象来源集合。 |
+| `Trust` | 记录来源、review、level、signatures、sandbox 和 policyRefs。 | 不替代 Registry 的发现范围。 |
+| `Run` | 锁定一次执行实际使用哪些对象。 | 不扫描来源，不维护对象索引。 |
+
+一句话：`Registry` 是字架，不是市场；是发现入口，不是分发平台。
+
+## Standard Extension
+
+`Registry` 属于 Standard Extension，不是 Core。
+
+最小 Huoban 链路可以不依赖 Registry：手动引用 `Skill`、`Profile`、`Flow`、`Run` 和 `Checkpoint`，就能验证协议对象链路。进入复用、跨项目导入、对象发现和生态共享后，Registry 才成为基础设施对象。
+
+这个边界很重要：Huoban 先定义可验证对象，再定义对象如何被发现；不是先建设 hosted registry。
+
+## sources
+
+v1alpha1 的 `Registry.spec.sources[].type` 只支持以下值：
+
+| source type | 语义 | 常见定位字段 |
+| --- | --- | --- |
+| `local` | 本地目录或文件来源。 | `path` |
+| `git` | Git 仓库来源。 | `url` |
+| `http` | HTTP 可访问来源。 | `url` |
+| `mcp` | 通过 MCP 暴露的对象来源。 | `url` |
+
+每个 source 必须包含 `path` 或 `url`。当前 schema 没有 `auth`、`branch`、`version`、`priority`、`cache`、`signature` 或 `credentials` 字段，不能把这些写成已经受支持的 Registry 能力。
+
+```yaml
+sources:
+  - type: local
+    path: ./examples
+```
+
+## index.includeKinds
+
+`index.includeKinds` 是索引范围过滤，不是实际对象列表。
+
+```yaml
+index:
+  includeKinds:
+    - Skill
+    - Adapter
+    - Flow
+    - Profile
+```
+
+它不表示：
+
+- 这些 kind 一定存在。
+- 索引结果一定有效。
+- 对象已经可信。
+- Registry 已经建立 capability 索引。
+- 对象有排序、排名、优先级或 fallback。
+
+如果没有 `includeKinds`，实现可以按自己的默认策略扫描 source；但不能把默认策略写成 v1alpha1 schema 已经强制规定。
+
+## 什么应该进入 Registry
+
+进入 Registry 的不是“所有文件”，而是已经能被 Huoban schema 识别、需要发现、复用、校验或治理的对象。
+
+| 适合进入 Registry | 不应默认进入 Registry |
+| --- | --- |
+| `Skill` | 普通 Markdown 文档 |
+| `Adapter` | 临时聊天记录 |
+| `Flow` | 未 schema 化的脚本 |
+| `Profile` | 未审查的公司内部实践笔记 |
+| `Policy` | 工具缓存 |
+| `Run` | runtime 日志 |
+| `Checkpoint` | 不能被 Huoban kind 识别的文件 |
+| `Artifact` | 一次性 scratch 内容 |
+| `Trust` | 任意外部网页 |
+
+Registry 的价值是标准对象发现，不是文件扫描器。如果什么都扫，Registry 会变成噪声入口。
+
+## 与 Trust 的边界
+
+`Registry` 声明来源，`Trust` 判断来源或对象是否可信。
+
+```yaml
+# Registry spec fragment
+trustPolicyRef:
+  name: safe-defaults
+```
+
+边界是：
+
+- `Registry.spec.sources` 只说对象从哪里被发现。
+- `Registry.spec.trustPolicyRef` 只引用信任策略。
+- `Trust` 记录对象或来源的信任等级、review、signatures、sandbox 和 policyRefs。
+- Registry 不因为收录某个对象就让它可信。
+- Registry 不替代 Policy；Policy 仍决定副作用、审批和权限边界。
+
+进入字架不等于可信；能被发现不等于能被执行。
+
+## 与 Skill / Adapter 的边界
+
+`Registry` 发现对象，`Skill` / `Adapter` 声明能力。
+
+| 对象 | 回答的问题 |
+| --- | --- |
+| `Skill` | 这个标准能力是什么？输入、输出和 side effects 是什么？ |
+| `Adapter` | 这个外部能力如何映射到 Huoban capability 和边界？ |
+| `Registry` | 从哪些 source 能发现这些对象？索引哪些 kind？ |
+
+capability 匹配、binding 和执行选择发生在 Registry 之外的解释层、Run binding 流程或 runtime 层，不是 Registry 自己做。Registry 可以让工具更容易找到候选对象，但不自动决定使用哪个对象。
+
+`Registry` 把活字放上字架；排版时具体选哪枚活字，不由字架决定。
+
+## 与 Flow / Run 的边界
+
+`Flow` 声明结构，`Run` 锁定本次使用的对象，`Registry` 只帮助发现候选对象。
+
+边界是：
+
+- `Flow` 声明需要哪些 capability、stage 和 outputs。
+- `Registry` 提供可搜索或可索引的对象来源。
+- `Run.spec.bindings` 锁定这次实际使用的 `Skill` 或 `Adapter`。
+- Registry 不应改写 Flow。
+- Registry 更新后，新的 Run 可以选择新对象；旧 Run 的 snapshot 和 bindings 不应被污染。
+
+```yaml
+# Run spec fragment
+bindings:
+  primary-review:
+    adapterRef: grill-me-skill-md
+```
+
+`Registry` 是找字架，`Run` 是这次实际取了哪些字来印。
+
+## 与 Artifact 的边界
+
+`Artifact` 是印张，`Registry` 是把值得复用或归档的印张归架。
+
+边界是：
+
+- `Artifact` 保存产物元数据、`contentRef`、hash 和 review 状态。
+- `Registry` 可以索引有复用、审查或归档价值的 Artifact。
+- Registry 不保存 Artifact 内容。
+- 普通临时产物不需要进入 Registry。
+- 跨项目复用的 Artifact 才值得被 Registry 发现。
+
+不要把 Registry 写成 Artifact 仓库。Registry 保存可发现性，Artifact 保存产物元数据和内容引用。
+
+## hosted registry 不是当前承诺
+
+v1alpha1 的 Registry 目标是本地发现、静态索引、schema validation 和来源边界声明。
+
+当前对象没有承诺：
+
+- hosted registry
+- marketplace
+- 排名和推荐
+- 商业分发
+- 权限托管
+- 版本解析
+- 签名分发
+- 远程对象缓存
+
+这些能力未来可以基于 Registry、Trust、Policy 和签名机制扩展，但不能写成当前 `Registry` 对象已经支持。
+
+## status
+
+`Registry.status` 使用通用 status 结构。常见 conditions 可以包括：
+
+| condition | 语义 |
+| --- | --- |
+| `RegistryLoaded` | Registry 对象已被读取。 |
+| `SourceIndexed` | 某个 source 已被索引。 |
+| `SourceUnavailable` | 某个 source 不可访问。 |
+| `TrustPolicyApplied` | trust policy 引用已被处理。 |
+| `ObjectInvalid` | source 中存在不符合 schema 的对象。 |
+
+这些是推荐或常见取值，不是 v1alpha1 schema enum。实现可以通过 validate / explain 暴露对象是否可读、是否符合 schema、是否被 includeKinds 过滤、是否受 trust policy 约束。
+
+## 安全边界
+
+Registry 扩大可发现性，也扩大攻击面。
+
+安全边界是：
+
+- `git`、`http`、`mcp` source 都可能引入不可信对象。
+- Registry 收录对象后，仍需要 schema validation。
+- 执行相关对象仍受 `Trust` 和 `Policy` 约束。
+- 导入自然语言文件或外部 tool 时，应先通过 `Adapter`，不要直接当成 trusted `Skill`。
+- `trustPolicyRef` 是引用，不是内联完整信任策略。
+- Registry 不应绕过 review。
+
+发现对象只是第一步。是否使用、如何使用、能否执行，仍要经过 Trust、Policy、Run binding 和 Checkpoint。
+
+## 结构示例
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Registry
+metadata:
+  name: local-huoban-registry
+spec:
+  sources:
+    - type: local
+      path: ./examples
+  index:
+    includeKinds:
+      - Skill
+      - Adapter
+      - Flow
+      - Profile
+      - Policy
+      - Run
+      - Checkpoint
+      - Artifact
+      - Trust
+```
+
+这个示例来自 `examples/registry/local-registry.yaml`。它展示的是本地 Registry：从 `./examples` 发现 Huoban 对象，并限制索引的 kind 范围。它不声明远程托管、不声明对象可信，也不决定执行时使用哪个对象。

@@ -40,7 +40,8 @@
           "checkpoint-model",
           "artifact-model",
           "policy-model",
-          "adapter-model"
+          "adapter-model",
+          "registry-model"
         ]
       },
       {
