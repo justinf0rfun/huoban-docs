@@ -37,7 +37,8 @@
           "profile-model",
           "flow-model",
           "run-model",
-          "checkpoint-model"
+          "checkpoint-model",
+          "policy-model"
         ]
       },
       {

@@ -1,0 +1,222 @@
+---
+title: "Policy 模型"
+sidebarTitle: "Policy 模型"
+description: "Policy 是 Huoban 的印坊规矩：用 capability、side effect 和 trust level 声明 AI 工作的行为边界。"
+---
+
+`Policy` 是 Huoban 的印坊规矩：它把一次 AI 工作中哪些行为允许、哪些行为拒绝、哪些行为必须审批，变成可版本化、可审查、可复用的规则对象。
+
+它不是安全系统本身，也不是 runtime 拦截器。`Policy` 声明行为边界；validator 校验对象结构，runtime、MCP server、agent runner 或审查工具解释规则，并采取继续、拒绝或创建 `Checkpoint` 等实现侧动作。
+
+本页属于核心概念，解释 `Policy` 的设计边界和使用模型；字段级定义、必填项和 schema 约束见 [Policy 规范](/spec-policy)。
+
+<CardGroup cols={2}>
+  <Card title="声明行为边界" icon="shield-check" type="tip" color="#16A34A">
+    `Policy` 用 `allow`、`deny`、`requireApproval` 表达一次 AI 工作的行为边界。
+  </Card>
+  <Card title="匹配协议语义" icon="route" type="tip" color="#16A34A">
+    规则匹配 `capabilities`、`sideEffects` 和 `trustLevels`，不是匹配工具私有命令。
+  </Card>
+  <Card title="保守处理 unknown" icon="file-code" type="tip" color="#16A34A">
+    未声明副作用推荐进入 `requireApproval`，严格场景可以直接 `deny`。
+  </Card>
+  <Card title="触发 Checkpoint" icon="boxes" type="tip" color="#16A34A">
+    `requireApproval` 表示不能自动继续，应进入一次具体的 `Checkpoint` 决策边界。
+  </Card>
+</CardGroup>
+
+## Policy 不是安全系统
+
+`Policy` 的第一性职责是把行为边界对象化，而不是提供完整安全执行环境。
+
+| 对象 | 职责 | 不承担 |
+| --- | --- | --- |
+| `Profile` | 提供判断语境、团队偏好、架构原则和风险信号。 | 不直接授权写文件、发布远端、访问密钥或花钱。 |
+| `Policy` | 声明 capability、side effect、trust level 下的 allow / deny / requireApproval。 | 不执行阻断，不保存审批结果，不记录实际副作用。 |
+| `Checkpoint` | 承载一次具体审批或判断请求。 | 不定义长期规则。 |
+| `Run` | 记录本次使用哪些 Policy，以及实际观察到哪些副作用。 | 不重新定义 Policy 规则。 |
+| `Trust` | 记录对象来源、审查状态、信任等级和 sandbox 要求。 | 不自动授予危险行为权限。 |
+
+一句话：`Policy` 是印坊规矩；它不决定文章写什么，也不替代校对，只声明哪些印刷动作可以做、哪些动作必须请示、哪些动作不能碰。
+
+## 与 Profile 的边界
+
+`Profile` 告诉 AI 在什么语境下判断，`Policy` 告诉系统什么行为被允许。
+
+| 内容 | 归属 |
+| --- | --- |
+| 这个项目偏好小改动。 | `Profile` |
+| 发布远端变更必须审批。 | `Policy` |
+| 团队要求先写设计说明。 | `Profile` |
+| 访问 secret 必须拒绝或审批。 | `Policy` |
+| 架构上避免跨层依赖。 | `Profile` |
+| 未声明 side effect 默认 requireApproval。 | `Policy` |
+
+`Profile` 可以提供风险信号或 `policyDerivationNotes`，但不能直接授权副作用。由 Profile 派生出的 Policy 必须作为独立对象审查后使用。
+
+## 与 Checkpoint 的边界
+
+`Policy` 声明规则，`Checkpoint` 承载事件。
+
+```yaml
+# Policy spec fragment
+rules:
+  - effect: requireApproval
+    when:
+      sideEffects:
+        - publishRemote
+        - accessSecret
+```
+
+`effect=requireApproval` 表示匹配到这些行为时不能自动继续；实现应创建或要求一个 `Checkpoint`。`Checkpoint` 的 `approve`、`requestChanges`、`reject` 只是这一次 run 的决策结果，不会改变 Policy 本身。
+
+## 与 Run 的边界
+
+`Policy` 是规则对象，`Run` 是执行事实对象。
+
+```yaml
+# Run spec fragment
+policyRefs:
+  - name: safe-defaults
+```
+
+```yaml
+# Run status fragment
+observedSideEffects:
+  - type: writeFile
+    path: examples/generated/idea-to-spec-review-dry-run.yaml
+```
+
+边界是：
+
+- `Run.spec.policyRefs` 声明本次执行采用的 Policy。
+- `Run.status.observedSideEffects` 记录实际观察到的副作用。
+- `Policy` 不保存 observed side effects。
+- `Run` 不复制 Policy 规则。
+
+当前 v1alpha1 的 `Run.snapshot` 没有 `policySpecHash`。完整冻结 Policy 内容需要未来字段或外部不可变存储；当前只能通过 `policyRefs` 和可选 generation 标识本次声明采用的 Policy。
+
+## 与 Trust 的边界
+
+`Trust` 回答这个对象来自哪里、是否经过审查、需要什么 sandbox；`Policy` 回答在这个信任等级下哪些行为允许、拒绝或需要审批。
+
+| 情况 | Policy 可以怎样处理 |
+| --- | --- |
+| `trustLevels` 包含 `unknown` | 对写文件、执行命令、访问网络等副作用 `requireApproval` 或 `deny`。 |
+| 对象来源经过 review | 仍按 side effect 和 capability 检查规则。 |
+| sandbox 要求未知 | 当前 Policy 不能直接匹配 sandbox 状态；实现可以基于 Trust / sandbox 信息创建 Checkpoint，或等待未来扩展 Policy matcher。 |
+
+高 trust 不等于自动允许危险行为。低 trust 可以让 Policy 更保守，但不由 Trust 单独决定行为。
+
+## 与 Skill / Adapter 的边界
+
+`Skill` 和 `Adapter` 提供声明：能力、输入输出和 declared side effects。`Policy` 使用这些声明做规则匹配，但不把它们当作事实。
+
+| 对象 | 表达内容 |
+| --- | --- |
+| `Skill` / `Adapter` | 声明 capability、输入输出和 declared side effects；`Adapter` 可引用 Trust，`Skill` 的信任信息由独立 `Trust` 对象描述。 |
+| `Policy` | 基于 capability、side effect、trust level 判断 allow / deny / requireApproval。 |
+| `Run` | 记录 observed side effects 和 condition。 |
+| `Checkpoint` | 承载 requireApproval 后的一次具体判断请求。 |
+
+如果 observed side effects 超出 declared side effects，应进入 `Run.status.observedSideEffects` 和 condition，例如 `UndeclaredSideEffectObserved`，并可能触发 `Checkpoint`。
+
+## 不是命令黑名单
+
+Policy 不应该主要匹配 shell 命令或某个 runner 的私有字段。
+
+不要把规则中心写成：
+
+```yaml
+# Not a Huoban Policy rule
+deny:
+  commands:
+    - git push
+    - rm -rf
+    - curl
+```
+
+应该写协议层语义：
+
+```yaml
+rules:
+  - effect: requireApproval
+    when:
+      sideEffects:
+        - publishRemote
+        - accessSecret
+  - effect: deny
+    when:
+      sideEffects:
+        - modifyGitHistory
+```
+
+`publishRemote`、`accessSecret`、`modifyGitHistory` 是协议层副作用；`git push`、`gh release`、`curl` 只是不同工具对这些副作用的实现方式。
+
+## effect
+
+v1alpha1 的 `Policy` 只有三种 effect。
+
+| effect | 语义 |
+| --- | --- |
+| `allow` | 匹配时允许自动继续。 |
+| `deny` | 匹配时拒绝继续。 |
+| `requireApproval` | 匹配时必须进入审批边界。 |
+
+告警、审计、沙箱、限流、隔离和升级处理属于未来扩展或实现侧行为，不是当前 `rules[].effect` 已经支持的字段值。
+
+## unknown side effect
+
+`defaults.unknownSideEffect` 决定未声明副作用的默认处理方式。
+
+| 值 | 语义 |
+| --- | --- |
+| `allow` | 未声明副作用也允许继续。 |
+| `deny` | 未声明副作用直接拒绝。 |
+| `requireApproval` | 未声明副作用必须进入审批边界。 |
+
+v1alpha1 允许三种值，但开放生态的推荐默认是 `requireApproval`。未知副作用不能被当作安全行为；它至少应该进入审批边界，严格场景可以直接 `deny`。
+
+## 标准治理对象
+
+`Policy` 属于标准治理对象。最小实现可以先验证 `Skill` / `Profile` / `Flow` / `Run` / `Checkpoint` 链路，但公开生态、公司落地和可复盘执行必须引入 Policy。
+
+没有 Policy，Huoban 可以描述工作结构，却不能稳定表达副作用、审批和权限边界。
+
+## 行业语言映射
+
+用当前行业语言看，`Policy` 位于 policy-as-code、permission boundary、approval gate 和 agent safety 的交叉点。
+
+| 行业概念 | Huoban 表达 |
+| --- | --- |
+| policy-as-code | 规则进入声明式 `Policy` 对象，而不是散落在工具配置里。 |
+| permission boundary | 行为边界以 side effect、capability 和 trust level 表达。 |
+| approval gate | `requireApproval` 触发 `Checkpoint`，但不是审批结果。 |
+| agent safety | 行为边界可被不同 agent、tool、MCP server 和 runtime 共同解释。 |
+
+Huoban 不把这些概念堆进一个安全大对象里，而是让 `Policy` 专注回答一个问题：在当前能力、副作用和信任条件下，这次 AI 工作是否可以继续。
+
+## 结构示例
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Policy
+metadata:
+  name: safe-defaults
+spec:
+  defaults:
+    unknownSideEffect: requireApproval
+  rules:
+    - effect: requireApproval
+      when:
+        sideEffects:
+          - publishRemote
+          - spendMoney
+          - accessSecret
+    - effect: deny
+      when:
+        sideEffects:
+          - modifyGitHistory
+```
+
+这个示例来自 `examples/policies/safe-defaults.yaml`。它展示的是保守默认策略：未知副作用需要审批，远端发布、花钱和访问密钥需要审批，修改 Git 历史直接拒绝。
