@@ -1,38 +1,110 @@
 ---
 title: "示例总览"
 sidebarTitle: "总览"
-description: "Huoban 示例集合：Profile 导入、idea-to-spec-review Flow、SKILL.md Adapter。"
+description: "Huoban 示例集合：从现有 AI 上下文和 skill 出发，理解 Profile、Adapter、Flow、Run、Checkpoint、Artifact 如何组合。"
 ---
 
 # 示例总览
 
-示例用于展示 Huoban 对象如何组合，而不是展示完整 runtime 行为。
+示例章节回答一个问题：Huoban 对象如何从真实 AI 工作流中长出来，并被验证、解释、迁移和复盘。
 
-当前示例聚焦三个早期采用路径：
+规范参考解释字段如何定义和验证；核心模型解释为什么这样设计；示例解释这些对象如何一起工作。这里的每个页面都对应 source repo 中的真实文件路径，不链接远端仓库页面。
 
 <CardGroup cols={2}>
-  <Card title="Profile 导入" type="tip" icon="file-import" href="/example-import-agents-profile">
-    把现有 AGENTS.md 迁移为标准 Profile 对象。
+  <Card title="AGENTS.md Profile" type="tip" icon="file-import" href="/example-import-agents-profile">
+    把项目里的 AGENTS.md 导入为分层 Profile，并标出哪些推断需要 review。
   </Card>
 
-  <Card title="Idea to Spec Review" type="tip" icon="route" href="/example-idea-to-spec-review">
-    用 Profile、Flow、Run、Checkpoint 串起第一条 demo flow。
+  <Card title="idea-to-spec-review" type="tip" icon="route" href="/example-idea-to-spec-review">
+    用 Skill、Adapter、Profile、Policy、Flow、Run、Checkpoint 和 Artifact 组成端到端案例。
   </Card>
 
   <Card title="SKILL.md Adapter" type="tip" icon="plug" href="/example-skill-md-adapter">
-    把外部 skill 适配为 Huoban Adapter。
+    把工具生态里的 SKILL.md 标准化为 Adapter，并通过 Trust 和 Policy 管住边界。
   </Card>
 </CardGroup>
 
-## 示例原则
+## 示例类型
 
-- 示例优先表达对象边界，不追求一次写满所有字段。
-- YAML 可以被 validator 使用，但 v0.1 阶段仍可能随 schema 调整。
-- 示例中出现的 hash、时间和路径是占位值。
-- 执行前应先 `validate` 和 `explain`，再考虑 `dry-run` 或 runtime 执行。
+| 类型 | 页面 | 解决的问题 | 主要对象 |
+| --- | --- | --- | --- |
+| 迁移类 | [AGENTS.md Profile](/example-import-agents-profile) | 把已有项目上下文从 Markdown 迁移为可审查 Profile。 | `Profile`、`Policy` |
+| 编排类 | [idea-to-spec-review](/example-idea-to-spec-review) | 把一次 AI 工作拆成 capability-first Flow 和可复盘 Run。 | `Skill`、`Adapter`、`Profile`、`Policy`、`Flow`、`Run`、`Checkpoint`、`Artifact` |
+| 适配类 | [SKILL.md Adapter](/example-skill-md-adapter) | 把已有工具 skill 接入 Huoban，但不直接把它当作可信 Skill。 | `Adapter`、`Trust`、`Policy` |
 
-## 推荐顺序
+## 推荐阅读顺序
 
-1. 先看 [Profile 导入](/example-import-agents-profile)。
-2. 再看 [Idea to Spec Review](/example-idea-to-spec-review)。
-3. 最后看 [SKILL.md Adapter](/example-skill-md-adapter)。
+<Steps>
+  <Step title="先看迁移入口">
+    阅读 [AGENTS.md Profile](/example-import-agents-profile)，理解普通上下文文件如何拆成 `Profile.spec.layers`。
+  </Step>
+
+  <Step title="再看端到端编排">
+    阅读 [idea-to-spec-review](/example-idea-to-spec-review)，理解 Profile、Policy、Skill、Adapter 如何进入 Flow，并在 Run 中被锁定。
+  </Step>
+
+  <Step title="最后看外部能力适配">
+    阅读 [SKILL.md Adapter](/example-skill-md-adapter)，理解工具安装的 skill 与 Huoban 标准对象的边界。
+  </Step>
+</Steps>
+
+## 真实文件
+
+这些示例来自 source repo 的 `examples/` 目录：
+
+| 路径 | 用途 |
+| --- | --- |
+| `examples/import/AGENTS.md` | 原始项目上下文输入。 |
+| `examples/generated/agents-profile.yaml` | 由 AGENTS.md 导入生成的 Profile。 |
+| `examples/derived/agents-risk-policy.yaml` | 由 Profile risk layer 派生的 Policy。 |
+| `examples/adapters/grill-me-skill-md.yaml` | 从 SKILL.md 来源导入的 Adapter。 |
+| `examples/trust/local-reviewed-grill-me.yaml` | Adapter 来源的 Trust 记录。 |
+| `examples/skills/design-review.yaml` | 原生 Skill 示例。 |
+| `examples/skills/spec-outline-writer.yaml` | 第二个原生 Skill 示例。 |
+| `examples/profiles/huoban-open-source-project.yaml` | Flow 使用的项目 Profile。 |
+| `examples/policies/safe-defaults.yaml` | Flow 使用的默认 Policy。 |
+| `examples/flows/idea-to-spec-review.yaml` | capability-first Flow。 |
+| `examples/runs/idea-to-spec-review-run.yaml` | 一次锁定的 Run 示例。 |
+| `examples/generated/idea-to-spec-review-dry-run.yaml` | CLI 生成的 dry-run Run。 |
+| `examples/checkpoints/idea-to-spec-review-direction.yaml` | 人类方向确认 Checkpoint。 |
+| `examples/artifacts/review-notes.yaml` | Run 产出的 review notes Artifact。 |
+| `examples/registry/local-registry.yaml` | 本地 example registry。 |
+
+## 验证路径
+
+在 source repo 中运行：
+
+```bash
+npm run validate
+npm run explain
+npm run print:dry-run
+```
+
+预期含义：
+
+| 命令 | 验证什么 |
+| --- | --- |
+| `npm run validate` | 所有 YAML 是否符合 `schemas/v1alpha1/`。 |
+| `npm run explain` | workspace 是否能被解释成对象族、版式、锁版执行和信任边界。 |
+| `npm run print:dry-run` | Flow 是否能生成不执行 agent 工作的 dry-run Run。 |
+
+## 对象组合原则
+
+示例遵守三条边界：
+
+- **可排版**：能力、阶段、输入、输出和校对点进入 `Flow`，而不是藏在 prompt 里。
+- **可润墨**：项目规则、领域语言和历史决策进入 `Profile`，并可被 `Run.snapshot` 锁定。
+- **可印刷**：一次工作通过 `Run`、`Checkpoint` 和 `Artifact` 留下可复盘事实链。
+
+## 常见误读
+
+| 误读 | 正确理解 |
+| --- | --- |
+| 示例是运行器设计。 | 示例是对象组合设计；runner binding 是下游实现问题。 |
+| 导入 Markdown 后就可信。 | 导入对象应带 `ImportNeedsReview`，结构化推断必须可审查。 |
+| `Flow` 应绑定具体工具。 | `Flow` 优先声明 capability，`Run.bindings` 再绑定 Skill 或 Adapter。 |
+| `Artifact` 是预期输出。 | Flow stage 声明预期输出；`Artifact` 记录一次执行实际留下的产物引用和 review 状态。 |
+
+## 下一步
+
+从 [AGENTS.md Profile](/example-import-agents-profile) 开始，先理解上下文如何从 Markdown 进入 Huoban 对象模型。
