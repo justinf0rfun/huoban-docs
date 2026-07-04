@@ -1,20 +1,59 @@
 ---
 title: "示例：SKILL.md Adapter"
 sidebarTitle: "SKILL.md Adapter"
-description: "把现有 SKILL.md 适配为 Huoban Adapter 的示例。"
+description: "把现有 SKILL.md 标准化为 Huoban Adapter，并说明工具 skill 与 Huoban Skill 的共性、差异、Trust 和 Policy 边界。"
 ---
 
 # 示例：SKILL.md Adapter
 
-这个示例展示如何把现有 `SKILL.md` 迁移为 Huoban `Adapter`。
+这个示例展示如何把工具生态里的 `SKILL.md` 接入 Huoban，但不直接把它升级为可信的 `Skill`。
 
-导入命令：
+它验证的核心假设是：已有 AI 工具能力可以被复用，但必须先补齐 capability、输入输出映射、副作用、checkpoint 和 trust 边界，才能进入可编排对象体系。
 
-```bash
-huoban import skills/grill-me/SKILL.md --as Adapter --out adapters/grill-me.yaml
+## 使用场景
+
+适合从这些来源开始：
+
+- Codex skill
+- Claude skill
+- 本地 `SKILL.md`
+- MCP tool 描述
+- Cursor Rule 中包装出的工具流程
+- 团队内部已有的 prompt-driven 工具说明
+
+如果来源主要描述“怎么执行一种能力”，默认先导入为 `Adapter`。如果来源主要描述“项目规则和上下文”，应导入为 `Profile`。
+
+## 示例文件
+
+| 路径 | 角色 |
+| --- | --- |
+| `examples/adapters/grill-me-skill-md.yaml` | 从 SKILL.md 来源导入的 Adapter。 |
+| `examples/trust/local-reviewed-grill-me.yaml` | Adapter 来源的 Trust 记录。 |
+| `examples/policies/safe-defaults.yaml` | 约束副作用的 Policy。 |
+| `examples/flows/idea-to-spec-review.yaml` | 使用 capability 的 Flow。 |
+| `examples/runs/idea-to-spec-review-run.yaml` | 把 Flow role 绑定到 Adapter 的 Run。 |
+
+## 对象关系
+
+```text
+SKILL.md source
+  -> Adapter/grill-me-skill-md
+      source: skillMd
+      capabilities: huoban.dev/designReview, huoban.dev/planning
+      mapping: user.prompt -> artifact.decisionNotes
+      sideEffects: readFile, writeFile
+      trustRef: local-reviewed-grill-me
+  -> Trust/local-reviewed-grill-me
+      level: reviewed
+      sandbox: network deny
+      policyRefs: safe-defaults
+  -> Run binding
+      primary-review -> Adapter/grill-me-skill-md
 ```
 
-## Adapter
+Adapter 是外部能力的标准化边界；Trust 记录来源是否被审查；Policy 控制副作用和审批。
+
+## 关键 Adapter 片段
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
@@ -55,7 +94,38 @@ status:
       reason: CapabilityAndSideEffectsInferred
 ```
 
-## Trust
+完整文件：`examples/adapters/grill-me-skill-md.yaml`。
+
+## 工具 skill 与 Huoban Skill
+
+两者的共性是：都描述一类可复用 AI 能力。
+
+关键差异在于边界：
+
+| 维度 | 工具安装的 skill | Huoban `Skill` |
+| --- | --- | --- |
+| 主要用途 | 让某个工具知道如何执行。 | 声明可验证、可组合的能力对象。 |
+| 输入输出 | 常隐藏在自然语言或工具约定里。 | 应显式声明 `inputs` 和 `outputs`。 |
+| 副作用 | 可能未声明或只写在说明里。 | 必须声明 `sideEffects`。 |
+| 信任 | 依赖安装来源或用户判断。 | 通过 `Trust`、`Policy` 和 review 状态表达。 |
+| 编排 | 通常绑定在具体工具内。 | 可被 `Flow` capability-first 引用。 |
+
+因此导入 `SKILL.md` 的默认产物是 `Adapter`，不是直接生成原生 `Skill`。只有当 capability、输入输出、副作用和 trust 都被审查后，才适合沉淀为 Huoban `Skill`。
+
+## 中文活字的启发
+
+中文活字不是只有“整字”这一层。偏旁、部首、笔画和字形结构共同决定一个字能否被识别、归类和复用。
+
+工具 skill 也是这样：一个 `SKILL.md` 往往混合了能力描述、触发条件、上下文假设、工具限制和安全边界。Huoban 不把它整块吞进 Flow，而是用 Adapter 先拆出可声明部分：
+
+- capability 像可识别的字形。
+- mapping 像字形和版式之间的位置关系。
+- sideEffects 像印刷时可能影响纸张、墨色或版面的副作用。
+- trustRef 像这枚异形活字是否经过验收。
+
+这让外部 skill 可以进入版盘，但不会污染 Huoban 的标准对象语义。
+
+## Trust 记录
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
@@ -77,18 +147,83 @@ spec:
   sandbox:
     required: true
     network: deny
+  policyRefs:
+    - name: safe-defaults
 ```
 
-## 重要边界
+完整文件：`examples/trust/local-reviewed-grill-me.yaml`。
 
-导入 `SKILL.md` 不应直接生成 trusted Skill。
+Trust 不让 Adapter 自动变安全。它记录来源、review 结论、sandbox 要求和关联 Policy，让下游 runner 或 registry tooling 能做保守决策。
 
-默认结果应是 Adapter，因为原始 skill 通常缺少：
+## 在 Flow 中如何使用
 
-- 标准 capability 声明。
-- 输入输出 schema。
-- declared side effects。
-- checkpoint 语义。
-- trust 元数据。
+Flow 只声明 capability：
 
-这些信息补齐并经过 review 后，Adapter 才能被更高等级 runtime 使用。
+```yaml
+stages:
+  - id: sharpen-idea
+    requires:
+      capability: huoban.dev/designReview
+      role: primary-review
+```
+
+Run 再绑定具体 Adapter：
+
+```yaml
+bindings:
+  primary-review:
+    adapterRef: grill-me-skill-md
+```
+
+这说明 `Adapter/grill-me-skill-md` 是本次执行的实现选择，不是 Flow 的永久依赖。
+
+## 运行验证
+
+在 source repo 中运行：
+
+```bash
+npm run validate
+npm run explain
+```
+
+`npm run explain` 应能看到：
+
+```text
+Adapter/grill-me-skill-md
+  source: skillMd skills/grill-me/SKILL.md
+  capabilities: huoban.dev/designReview, huoban.dev/planning
+  declaredSideEffects: readFile, writeFile
+  trustRef: local-reviewed-grill-me
+```
+
+这说明导入结果已经具备 capability、来源、副作用和 trust 引用。
+
+## 常见修改方式
+
+| 你要改什么 | 应该改哪里 |
+| --- | --- |
+| 支持新的外部 skill 来源 | 新增 `Adapter.spec.source` 和 mapping。 |
+| 调整能力声明 | 修改 `Adapter.spec.capabilities`，并重新 review。 |
+| 增加网络、写文件、发布等风险 | 修改 `sideEffects`，并让 Policy 约束。 |
+| 标记来源可信度 | 新增或修改 `Trust`。 |
+| 在某次执行中使用 Adapter | 修改 `Run.spec.bindings`。 |
+
+## 常见错误
+
+| 错误 | 为什么错 |
+| --- | --- |
+| 导入 SKILL.md 后直接生成 trusted Skill。 | 外部来源通常缺少标准输入输出、副作用和 Trust 证据。 |
+| 把 Profile 上下文写进 Adapter。 | Adapter 描述外部能力，Profile 描述上下文。 |
+| 只声明 capability，不声明 side effects。 | runner 无法判断是否需要审批或 sandbox。 |
+| 认为 Trust 替代 Policy。 | Trust 记录来源信任；Policy 控制副作用和权限。 |
+
+## 相关页面
+
+- [Adapter 模型](/adapter-model)
+- [Skill 模型](/object-model#skill-是活字)
+- [Adapter 规范](/spec-adapter)
+- [Skill 规范](/spec-skill)
+- [Trust 规范](/spec-trust)
+- [Policy 规范](/spec-policy)
+- [导入 SKILL.md](/import-skill-md)
+- [示例总览](/examples-overview)

@@ -1,20 +1,73 @@
 ---
 title: "示例：idea-to-spec-review"
 sidebarTitle: "idea-to-spec-review"
-description: "Huoban 第一条 demo flow：从想法到规格审查，展示 Flow、Run、Checkpoint 和 Artifact。"
+description: "从一个想法到规格审查的端到端示例，展示 Huoban 对象如何组合成可验证、可解释、可复盘的 AI 工作流。"
 ---
 
 # 示例：idea-to-spec-review
 
-`idea-to-spec-review` 是 Huoban 的第一条推荐 demo flow。它展示一件事：已有 skill 可以被 Huoban 化，带着 Profile 组成 Flow，在 Checkpoint 停住，并产出可审查 Artifact。
+`idea-to-spec-review` 是一个端到端示例：把“把想法打磨成规格草案”这件 AI 工作拆成可验证对象。
 
-## Flow
+它验证的核心假设是：AI 工作不应该只存在于 prompt、聊天历史或某个工具的 workflow 里。Huoban 可以把能力、上下文、编排、执行快照、校对点和产物拆成对象，让同一套语义被不同 agent、tool、MCP server 或 runner 解释和绑定。
+
+## 示例目标
+
+这个示例把一次工作拆成两段：
+
+1. `sharpen-idea`：用 `huoban.dev/designReview` 能力审查方向，产出 `review-notes`。
+2. `draft-spec-outline`：用 `huoban.dev/specification` 能力把 review notes 变成规格大纲。
+
+第一段后必须停下来做 `Checkpoint`，因为方向判断会影响后续规格。
+
+## 示例文件
+
+| 路径 | 对象 |
+| --- | --- |
+| `examples/skills/design-review.yaml` | `Skill/design-review` |
+| `examples/skills/spec-outline-writer.yaml` | `Skill/spec-outline-writer` |
+| `examples/adapters/grill-me-skill-md.yaml` | `Adapter/grill-me-skill-md` |
+| `examples/profiles/huoban-open-source-project.yaml` | `Profile/huoban-open-source-project` |
+| `examples/policies/safe-defaults.yaml` | `Policy/safe-defaults` |
+| `examples/flows/idea-to-spec-review.yaml` | `Flow/idea-to-spec-review` |
+| `examples/runs/idea-to-spec-review-run.yaml` | `Run/idea-to-spec-review-001` |
+| `examples/generated/idea-to-spec-review-dry-run.yaml` | CLI 生成的 `Run/idea-to-spec-review-dry-run` |
+| `examples/checkpoints/idea-to-spec-review-direction.yaml` | `Checkpoint/idea-to-spec-review-001-direction` |
+| `examples/artifacts/review-notes.yaml` | `Artifact/review-notes` |
+
+## 对象关系
+
+```text
+Skill/design-review
+Skill/spec-outline-writer
+Adapter/grill-me-skill-md
+Profile/huoban-open-source-project
+Policy/safe-defaults
+  -> Flow/idea-to-spec-review
+      stages:
+        sharpen-idea requires huoban.dev/designReview
+        draft-spec-outline requires huoban.dev/specification
+      checkpoint:
+        after sharpen-idea
+  -> Run/idea-to-spec-review-001
+      bindings:
+        primary-review -> Adapter/grill-me-skill-md
+        spec-writer -> Skill/spec-outline-writer
+      snapshot:
+        flow/profile/binding hashes
+  -> Checkpoint/idea-to-spec-review-001-direction
+  -> Artifact/review-notes
+```
+
+`Flow` 是版式，说明能力如何排列；`Run` 是锁版印刷，说明这次执行具体绑定了哪些对象；`Checkpoint` 是校对，说明哪里必须停下；`Artifact` 是印件，记录这次执行留下的事实。
+
+## 关键 Flow 片段
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
 kind: Flow
 metadata:
   name: idea-to-spec-review
+  generation: 1
 spec:
   profileRefs:
     - name: huoban-open-source-project
@@ -31,7 +84,6 @@ spec:
       outputs:
         - name: review-notes
           artifactType: decision-notes
-
     - id: draft-spec-outline
       requires:
         capability: huoban.dev/specification
@@ -42,7 +94,6 @@ spec:
       outputs:
         - name: spec-outline
           artifactType: markdown
-
   checkpoints:
     - after: sharpen-idea
       type: humanApproval
@@ -50,7 +101,24 @@ spec:
       reason: ConfirmDirectionBeforeSpec
 ```
 
-## Run
+完整文件：`examples/flows/idea-to-spec-review.yaml`。
+
+## 为什么是 capability-first
+
+`Flow` 没有直接写“调用某个工具”。它写的是：
+
+| stage | capability | role |
+| --- | --- | --- |
+| `sharpen-idea` | `huoban.dev/designReview` | `primary-review` |
+| `draft-spec-outline` | `huoban.dev/specification` | `spec-writer` |
+
+这使得同一个 Flow 可以在不同环境中绑定不同实现：
+
+- 本地可以把 `primary-review` 绑定到 `Adapter/grill-me-skill-md`。
+- 另一个 runner 可以把它绑定到原生 `Skill/design-review`。
+- 企业环境可以绑定到内部 MCP tool，但 Flow 本身不需要改变。
+
+## Run 如何锁定一次执行
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
@@ -61,6 +129,11 @@ spec:
   flowRef:
     name: idea-to-spec-review
     generation: 1
+  profileRefs:
+    - name: huoban-open-source-project
+      generation: 1
+  policyRefs:
+    - name: safe-defaults
   mode: dryRun
   bindings:
     primary-review:
@@ -68,22 +141,16 @@ spec:
     spec-writer:
       skillRef: spec-outline-writer
   snapshot:
-    flowSpecHash: sha256:...
-    profileSpecHash: sha256:...
-    skillBindingHash: sha256:...
-status:
-  phase: WaitingForCheckpoint
-  currentStage: sharpen-idea
-  conditions:
-    - type: RunPlanned
-      status: "True"
-      reason: DryRunGenerated
-    - type: CheckpointRequired
-      status: "True"
-      reason: ConfirmDirectionBeforeSpec
+    flowSpecHash: sha256:flow-placeholder
+    profileSpecHash: sha256:profile-placeholder
+    skillBindingHash: sha256:binding-placeholder
 ```
 
-## Checkpoint
+完整文件：`examples/runs/idea-to-spec-review-run.yaml`。
+
+`Run` 不重新定义 Flow。它锁定这次执行使用的 Flow、Profile、Policy、binding 和 snapshot。这样后续审查时可以回答：这次 AI 工作到底按哪个版式、哪套上下文、哪组能力绑定执行。
+
+## Checkpoint 与 Artifact
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
@@ -103,10 +170,124 @@ spec:
     - name: review-notes
 ```
 
-## 这个示例验证什么
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Artifact
+metadata:
+  name: review-notes
+spec:
+  type: decision-notes
+  runRef:
+    name: idea-to-spec-review-001
+  stage: sharpen-idea
+  contentRef:
+    type: file
+    path: artifacts/idea-review.md
+  hash: sha256:artifact-placeholder
+  review:
+    status: pending
+```
 
-- Flow 引用 capability，而不是强依赖单一工具。
-- Run 解析具体 skill / adapter binding。
-- Profile 和 Policy 在 Run 中进入快照。
-- Checkpoint 是一等对象，不是聊天里的临时停顿。
-- Artifact 可以被复盘和审查。
+完整文件：
+
+- `examples/checkpoints/idea-to-spec-review-direction.yaml`
+- `examples/artifacts/review-notes.yaml`
+
+`Flow.spec.stages[].outputs` 声明预期输出；`Artifact` 记录一次执行实际留下的产物引用、hash 和 review 状态。
+
+## 运行验证
+
+在 source repo 中运行：
+
+```bash
+npm run validate
+npm run explain
+npm run print:dry-run
+```
+
+也可以验证单个 Flow：
+
+```bash
+npm exec -- huoban validate examples/flows/idea-to-spec-review.yaml
+```
+
+预期输出：
+
+```text
+✓ examples/flows/idea-to-spec-review.yaml: Flow/idea-to-spec-review
+```
+
+## explain 应该看什么
+
+`npm run explain` 会把这个示例解释成：
+
+```text
+compose Flow/idea-to-spec-review
+  ink with Profile/huoban-open-source-project
+  apply Policy/safe-defaults
+  set stage sharpen-idea: huoban.dev/designReview
+  set stage draft-spec-outline: huoban.dev/specification
+  proof after sharpen-idea: ConfirmDirectionBeforeSpec
+```
+
+这段输出对应活字印刷流程：
+
+| explain 输出 | Huoban 对象 | 含义 |
+| --- | --- | --- |
+| `compose Flow` | `Flow` | 排版。 |
+| `ink with Profile` | `Profile` | 润墨。 |
+| `apply Policy` | `Policy` | 套用印坊规矩。 |
+| `set stage` | `Skill` / `Adapter` capability | 选择活字并排入版式。 |
+| `proof after` | `Checkpoint` | 校对。 |
+
+## dry-run 应该看什么
+
+`npm run print:dry-run` 会生成：
+
+```text
+examples/generated/idea-to-spec-review-dry-run.yaml: Run/idea-to-spec-review-dry-run
+```
+
+生成的 Run 是 `mode: dryRun`，包含：
+
+- `flowRef`
+- `profileRefs`
+- `policyRefs`
+- `bindings`
+- `snapshot`
+- `RunPlanned`
+- `FlowSnapshotCreated`
+
+这说明 Huoban 可以先印出“版式快照”，不执行真实 agent 工作。
+
+## 常见修改方式
+
+| 你要改什么 | 应该改哪里 |
+| --- | --- |
+| 增加一个审查阶段 | 修改 `Flow.spec.stages`。 |
+| 换成另一个 review skill | 修改 `Run.spec.bindings`，不要改 Flow。 |
+| 增加项目上下文 | 修改或新增 `Profile`，再通过 `profileRefs` 引用。 |
+| 增加发布、花钱、访问密钥等规则 | 修改 `Policy`。 |
+| 要求某一步必须人审 | 修改 `Flow.spec.checkpoints`，并在执行中生成 `Checkpoint`。 |
+| 记录真实产物 | 创建或更新 `Artifact`，不要把正文塞进 Flow。 |
+
+## 常见错误
+
+| 错误 | 为什么错 |
+| --- | --- |
+| 在 Flow 里绑定具体 agent 或模型。 | Flow 应声明 capability；具体实现属于 Run binding。 |
+| 把 Checkpoint 当作聊天里的暂停。 | Checkpoint 是对象，必须能引用 Run、stage 和 artifact。 |
+| 只保存最终 Markdown。 | 缺少 Run、Checkpoint 和 Artifact，就无法复盘过程。 |
+| 把 Profile 里的规则复制进每个 stage。 | 上下文应由 Profile 注入，不应污染 Flow 结构。 |
+
+## 相关页面
+
+- [Flow 模型](/flow-model)
+- [Run 模型](/run-model)
+- [Checkpoint 模型](/checkpoint-model)
+- [Artifact 模型](/artifact-model)
+- [Flow 规范](/spec-flow)
+- [Run 规范](/spec-run)
+- [Checkpoint 规范](/spec-checkpoint)
+- [Artifact 规范](/spec-artifact)
+- [示例总览](/examples-overview)
