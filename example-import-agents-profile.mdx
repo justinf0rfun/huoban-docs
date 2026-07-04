@@ -1,19 +1,69 @@
 ---
 title: "示例：导入 AGENTS.md 为 Profile"
 sidebarTitle: "AGENTS.md Profile"
-description: "把 AGENTS.md 中的工程规则迁移成 Huoban Profile 对象的示例。"
+description: "把 AGENTS.md 中的工程规则迁移成 Huoban Profile，并说明分层上下文、结构化推断和 Policy 派生边界。"
 ---
 
 # 示例：导入 AGENTS.md 为 Profile
 
-这个示例展示如何把一个项目里的 `AGENTS.md` 转换为 Huoban `Profile`。
+这个示例展示如何把已有 `AGENTS.md` 从普通 Markdown 上下文升级为 Huoban `Profile`。
 
-命令形态：
+它验证的核心假设是：项目上下文不应该只靠 agent 在聊天里临时读取。上下文应该被分层、结构化、保留原文、标记推断，并能继续派生 Policy。
+
+## 使用场景
+
+适合从这些文件开始：
+
+- `AGENTS.md`
+- `CLAUDE.md`
+- Cursor Rules
+- 项目内的 AI 使用说明
+- 团队工程规则文档
+
+这些文件通常包含风格偏好、验证命令、风险边界和领域语言。它们不是能力本身，因此默认应进入 `Profile`，不是 `Skill` 或 `Adapter`。
+
+## 示例文件
+
+| 路径 | 角色 |
+| --- | --- |
+| `examples/import/AGENTS.md` | 原始输入。 |
+| `examples/generated/agents-profile.yaml` | CLI 生成的 Profile。 |
+| `examples/export/AGENTS.md` | 从 Profile 导出的 Markdown。 |
+| `examples/derived/agents-risk-policy.yaml` | 从 risk layer 派生的 Policy。 |
+
+## 对象关系
+
+```text
+examples/import/AGENTS.md
+  -> Profile/agents-profile
+      layers: style, commands, risk
+      conditions: ProfileImported, ImportNeedsReview
+  -> Policy/agents-profile-risk-policy
+      rules: requireApproval for risky side effects
+  -> examples/export/AGENTS.md
+      reviewable Markdown generated from Profile
+```
+
+`Profile` 保留上下文和结构化线索；`Policy` 才负责副作用、审批和权限边界。这个拆分让上下文可润墨，让风险规则可审查。
+
+## 运行命令
+
+在 source repo 中运行：
 
 ```bash
-huoban import AGENTS.md --as Profile --out profiles/project.yaml
-huoban explain profiles/project.yaml
-huoban validate profiles/project.yaml
+npm run import:profile
+npm run export:agents
+npm run derive:policy
+npm run validate
+npm run explain
+```
+
+对应的底层命令形态是：
+
+```bash
+node ./bin/huoban.js import examples/import/AGENTS.md --as Profile --out examples/generated/agents-profile.yaml
+node ./bin/huoban.js export examples/generated/agents-profile.yaml --to AGENTS.md --out examples/export/AGENTS.md
+node ./bin/huoban.js derive policy examples/generated/agents-profile.yaml --out examples/derived/agents-risk-policy.yaml
 ```
 
 ## 输入片段
@@ -21,68 +71,140 @@ huoban validate profiles/project.yaml
 ```md
 # Agent Rules
 
+## Style
+
 Prefer small surgical changes. Do not refactor unrelated code.
-Run npm test before finalizing changes.
-Ask before modifying git history or publishing remote changes.
+Use test-first changes for bug fixes when practical.
+
+## Commands
+
+Run `npm run validate` before finalizing schema or example changes.
+Use `npm run explain` to inspect the example workspace.
+
+## Risk
+
+Ask before modifying git history, publishing remote changes, or accessing secrets.
 ```
 
-## 输出 Profile
+## 关键 Profile 片段
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
 kind: Profile
 metadata:
-  name: project-profile
+  name: agents-profile
   labels:
-    huoban.dev/imported-from: AGENTS.md
+    huoban.dev/imported-from: examples/import/AGENTS.md
 spec:
   layers:
     - name: style
       data:
         preferSmallChanges: true
         avoidUnrelatedRefactor: true
-      content: |
+        testFirstForBugfixes: true
+      content: |-
         Prefer small surgical changes. Do not refactor unrelated code.
-
+        Use test-first changes for bug fixes when practical.
     - name: commands
       data:
-        testCommand: npm test
-      content: |
-        Run npm test before finalizing changes.
-
+        commands:
+          - npm run validate
+          - npm run explain
+      content: |-
+        Run `npm run validate` before finalizing schema or example changes.
+        Use `npm run explain` to inspect the example workspace.
     - name: risk
       data:
         requiresApproval:
-          - modifyGitHistory
           - publishRemote
-      content: |
-        Ask before modifying git history or publishing remote changes.
+          - modifyGitHistory
+          - accessSecret
+        inferred: true
+      content: Ask before modifying git history, publishing remote changes, or accessing secrets.
 status:
   conditions:
     - type: ProfileImported
       status: "True"
       reason: ImportedFromMarkdown
-      message: "AGENTS.md was converted into Profile layers."
     - type: ImportNeedsReview
       status: "True"
-      reason: NaturalLanguageInference
-      message: "Some structured fields were inferred and should be reviewed."
+      reason: RuleBasedInference
 ```
 
-## 解释结果
+完整文件：`examples/generated/agents-profile.yaml`。
 
-`huoban explain` 应至少说明：
+## 字段如何理解
 
-- 原文被保留到 `content`。
-- 工程习惯进入 `style` layer。
-- 验证命令进入 `commands` layer。
-- 风险提示进入 `risk` layer。
-- 权限规则不应留在 Profile，后续应拆成 Policy。
+| 字段 | 说明 |
+| --- | --- |
+| `metadata.labels.huoban.dev/imported-from` | 记录来源，方便审查和追溯。 |
+| `spec.layers[].name` | 把 Markdown 章节拆成稳定上下文层。 |
+| `spec.layers[].content` | 保留原文，避免结构化推断丢失语义。 |
+| `spec.layers[].data` | 提供 agent 和 tooling 可读取的结构化线索。 |
+| `status.conditions[].ImportNeedsReview` | 明确告诉读者：导入结果包含推断，需要 review。 |
 
-## 后续动作
+## explain 应该看什么
 
-如果 `risk` layer 中出现审批要求，推荐继续生成 Policy：
+`npm run explain` 会把生成对象解释为：
 
-```bash
-huoban derive policy profiles/project.yaml --out policies/project-risk.yaml
+```text
+Profile/agents-profile
+  layers: 3
+    - style (data + content)
+    - commands (data + content)
+    - risk (data + content)
+  conditions:
+    - ProfileImported: True (ImportedFromMarkdown)
+    - ImportNeedsReview: True (RuleBasedInference)
 ```
+
+这说明导入没有只复制 Markdown，而是保留了三层上下文，并显式标出结构化推断。
+
+## 派生 Policy
+
+`risk` layer 中的审批要求不应长期停留在 Profile 里。它可以派生为 Policy：
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Policy
+metadata:
+  name: agents-profile-risk-policy
+spec:
+  defaults:
+    unknownSideEffect: requireApproval
+  rules:
+    - effect: requireApproval
+      when:
+        sideEffects:
+          - publishRemote
+          - modifyGitHistory
+          - accessSecret
+```
+
+完整文件：`examples/derived/agents-risk-policy.yaml`。
+
+## 常见修改方式
+
+| 你要改什么 | 应该改哪里 |
+| --- | --- |
+| 增加团队编码风格 | 增加或修改 `Profile.spec.layers`。 |
+| 增加必须运行的命令 | 修改 `commands` layer。 |
+| 增加审批或权限规则 | 派生或维护 `Policy`，不要只写自然语言。 |
+| 导出给现有 agent 工具使用 | 使用 `examples/export/AGENTS.md` 形态，但保留 review。 |
+
+## 常见错误
+
+| 错误 | 为什么错 |
+| --- | --- |
+| 把 AGENTS.md 导入为 Adapter。 | 这个文件主要是上下文，不是外部能力接口。 |
+| 删除原文只保留结构化 data。 | 会丢失语义，agent 和人都无法复盘推断来源。 |
+| 把 `requiresApproval` 当作 Profile 的最终权限模型。 | Profile 影响判断标准；Policy 才约束副作用和审批。 |
+| 看到导入成功就直接信任。 | `ImportNeedsReview` 表示结构化字段需要人类确认。 |
+
+## 相关页面
+
+- [Profile 模型](/profile-model)
+- [Profile 规范](/spec-profile)
+- [Policy 规范](/spec-policy)
+- [导入 AGENTS.md](/import-agents-md)
+- [示例总览](/examples-overview)
