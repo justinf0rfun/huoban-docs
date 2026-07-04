@@ -1,30 +1,55 @@
 ---
 title: "Flow 对象"
 sidebarTitle: "Flow"
-description: "Flow 是 Huoban 的版式对象，声明 stage、capability、profile、policy、checkpoint 和 artifact。"
+description: "Flow 是 Huoban 的版式对象，按 capability-first 声明 stage、输入输出、checkpoint、Profile 和 Policy 引用。"
 ---
 
 # Flow 对象
 
-`Flow` 是 Huoban 的版式：它声明能力如何排列、上下文如何传递、哪里需要校对、产物如何生成。
+`Flow` 是 Huoban 的版式：它声明能力如何排列、上下文如何传递、哪里需要校对、预期会产生什么产物。
 
-Flow 应优先引用 capability，而不是强绑定具体 Skill。具体 Skill 由 Run 或 runtime binding 解析。
+规范页定义 Flow 的字段形状和验证边界。为什么 Flow 不应该绑定 runner，请读 [Flow 模型](/flow-model)。
 
-## spec 字段
+## 对象职责
+
+Flow 解决的问题是：工作流不能只存在于 prompt、聊天习惯或某个工具的私有 workflow 里。它必须能被声明、解释、dry-run、审查和跨 runner 绑定。
+
+Flow 负责描述：
+
+- 默认 `Profile` 和 `Policy` 引用。
+- stage 顺序。
+- 每个 stage 需要的 capability 或直接使用的外部对象。
+- 输入来源。
+- 输出 artifact 声明。
+- 必须停下来的 checkpoint。
+
+Flow 不负责：
+
+- 选择最终模型或 runner；这属于 `Run.bindings` 或实现侧 binding。
+- 保存执行状态；这属于 `Run.status`。
+- 保存产物正文；这属于 `Artifact`。
+- 控制权限；这属于 `Policy`。
+
+## v1alpha1 字段
 
 | 字段 | 要求 | 说明 |
 | --- | --- | --- |
-| `profileRefs` | 可选 | Flow 默认使用的 Profile。 |
-| `policyRefs` | 可选 | Flow 默认使用的 Policy。 |
-| `stages` | 必填 | 阶段数组。 |
-| `stages[].id` | 必填 | 稳定 stage id。 |
-| `stages[].requires.capability` | 推荐 | 需要的能力，例如 `huoban.dev/designReview`。 |
-| `stages[].uses` | 可选 | shortcut：直接引用具体 Skill 或 Adapter。 |
-| `stages[].inputs` | 可选 | 输入来源。 |
-| `stages[].outputs` | 可选 | 输出 artifact 声明。 |
-| `checkpoints` | 可选 | 人工或规则校对点。 |
+| `spec.profileRefs` | 可选 | Flow 默认使用的 Profile 引用。 |
+| `spec.policyRefs` | 可选 | Flow 默认使用的 Policy 引用。 |
+| `spec.stages` | 必填，至少 1 个 | 阶段数组。 |
+| `spec.stages[].id` | 必填 | stage 稳定 id。 |
+| `spec.stages[].requires` | 与 `uses` 二选一 | capability-first 的能力需求。 |
+| `spec.stages[].requires.capability` | `requires` 内必填 | 需要的 capability。 |
+| `spec.stages[].requires.role` | 可选 | 在 Run binding 中使用的角色名。 |
+| `spec.stages[].uses` | 与 `requires` 二选一 | 直接引用具体 Skill 或 Adapter 的 shortcut。 |
+| `spec.stages[].inputs` | 可选 | stage 输入来源。 |
+| `spec.stages[].outputs` | 可选 | stage 预期产物声明。 |
+| `spec.checkpoints` | 可选 | Flow 级 checkpoint 声明。 |
+| `status` | 可选 | validation、resolution 或 planning 状态。 |
 
-## 最小示例
+每个 stage 必须至少有 `requires` 或 `uses`。推荐优先使用 `requires.capability`，因为它允许不同 runner 在 `Run.bindings` 中选择具体 Skill 或 Adapter。
+
+## 最小合法示例
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
@@ -33,11 +58,14 @@ metadata:
   name: idea-to-spec-review
 spec:
   profileRefs:
-    - name: huoban-project
+    - name: huoban-open-source-project
+  policyRefs:
+    - name: safe-defaults
   stages:
     - id: sharpen-idea
       requires:
         capability: huoban.dev/designReview
+        role: primary-review
       inputs:
         - name: idea
           from: user.prompt
@@ -48,18 +76,42 @@ spec:
     - after: sharpen-idea
       type: humanApproval
       required: true
+      reason: ConfirmDirectionBeforeSpec
 ```
 
-## status
+参考 example：`examples/flows/idea-to-spec-review.yaml`。
 
-Flow status 通常由 validator 或 runtime 写入：
+## 验证规则
 
-- `FlowValidated`
-- `ProfileResolved`
-- `PolicyChecked`
-- `SkillResolved`
-- `RunPlanned`
+validator 至少应检查：
 
-## 设计约束
+- `kind` 必须是 `Flow`。
+- `spec.stages` 至少包含一个 stage。
+- 每个 stage 必须有 `id`。
+- 每个 stage 必须有 `requires` 或 `uses`。
+- `requires.capability` 必须符合 capability 格式。
+- `inputs[].name` 和 `inputs[].from` 必须同时存在。
+- `outputs[].name` 和 `outputs[].artifactType` 必须同时存在。
+- checkpoint 必须声明 `type` 和 `required`。
+- `checkpoints[].after` 或 `before` 应能解析到 stage id；schema 不强制，但 workspace validator 应检查。
 
-不要把 Flow 写成过程式脚本。`shell`、`command`、具体 CLI 参数应进入 Adapter 或 runtime-specific extension，不应污染核心 Flow。
+## 与相邻对象的边界
+
+| 容易混淆 | 边界 |
+| --- | --- |
+| `Flow` / `Run` | Flow 是可复用版式；Run 是一次执行的锁定快照。 |
+| `Flow` / `Skill` | Flow 引用 capability；Skill 提供 capability。 |
+| `Flow` / `Policy` | Flow 声明会用哪些 Policy；Policy 定义副作用规则。 |
+| `Flow` / `Checkpoint` | Flow 声明 checkpoint 位置；Checkpoint 对象记录一次具体停顿和决策。 |
+| `Flow` / `Artifact` | Flow 声明预期输出；Artifact 记录实际产物。 |
+
+## 常见错误
+
+- 在 Flow 中写 shell command 或 CLI 参数。应进入 Adapter 或 runner-specific binding。
+- 永久绑定具体模型或 agent。Flow 应描述能力需求，Run 再绑定具体实现。
+- 把所有上下文塞进 stage。上下文应进入 Profile。
+- 把 checkpoint 当成普通注释。高判断力或高风险节点应显式声明。
+
+## 活字印刷位置
+
+Flow 对应“版式”。排版不是执行，排版决定哪些活字被选择、怎么排列、在哪里校对、印出什么。Flow 让 Huoban 可排版。

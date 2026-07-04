@@ -1,38 +1,53 @@
 ---
 title: "Skill 对象"
 sidebarTitle: "Skill"
-description: "Skill 是 Huoban 的原子能力对象，声明 capability、输入输出、上下文需求和副作用。"
+description: "Skill 是 Huoban 的原子能力对象，声明 capability、输入输出、上下文提示和副作用。"
 ---
 
 # Skill 对象
 
-`Skill` 是 Huoban 的活字：一个可复用、可移动、可排列的原子能力。
+`Skill` 是 Huoban 的活字：一枚可被识别、复用、移动和重新排版的能力单元。
 
-Skill 不应该绑定具体项目上下文。项目差异由 `Profile` 注入，执行差异由 `Run` 和 `Binding` 决定。
+规范页只定义 Skill 的字段形状和验证边界。为什么 Skill 要独立于 Profile 和 Flow，请读 [Skill 是活字](/design-philosophy#skill-是活字) 与 [对象模型](/object-model)。
 
-## 语义
+## 对象职责
 
-Skill 用于声明：
+Skill 解决的问题是：把“某个 AI 能力能做什么”从 prompt、工具 UI 或个人习惯中提取出来，变成可验证对象。
+
+Skill 负责声明：
 
 - 它提供哪些 `capabilities`。
-- 接受哪些输入，产生哪些输出。
-- 需要哪些上下文或工具。
-- 可能产生哪些 declared side effects。
-- 是否天然需要 checkpoint。
+- 它接受哪些输入、产生哪些输出。
+- 它可能需要哪些 Profile layer。
+- 它可能产生哪些副作用。
+- 它是否建议或要求 checkpoint。
+- 它是否来自某个 Adapter。
 
-## spec 字段
+Skill 不负责：
+
+- 保存项目上下文；这属于 `Profile`。
+- 排列多个能力；这属于 `Flow`。
+- 记录一次执行；这属于 `Run`。
+- 批准危险操作；这属于 `Policy` 和 `Checkpoint`。
+- 记录产物正文；这属于 `Artifact`。
+
+## v1alpha1 字段
 
 | 字段 | 要求 | 说明 |
 | --- | --- | --- |
-| `capabilities` | 必填 | Skill 满足的能力命名空间，例如 `huoban.dev/designReview`。 |
-| `inputs` | 可选 | 输入 schema 或输入引用。 |
-| `outputs` | 可选 | 输出 schema 或 artifact 类型。 |
-| `profileHints` | 可选 | 推荐注入的 Profile layer 类型。 |
-| `sideEffects.declared` | 必填 | 可能产生的副作用声明。 |
-| `checkpoint` | 可选 | 是否建议在执行前后触发校对。 |
-| `adapterRef` | 可选 | 如果来自外部生态，指向对应 Adapter。 |
+| `spec.capabilities` | 必填，至少 1 个，唯一 | capability 名称，格式为 `domain/name`，例如 `huoban.dev/designReview`。 |
+| `spec.inputs` | 可选 | 输入声明。每项必须有 `name`，可附加实现侧字段。 |
+| `spec.outputs` | 可选 | 输出声明。每项必须有 `name`，可声明 `artifactType`。 |
+| `spec.profileHints` | 可选 | 推荐注入的 Profile layer 名称。 |
+| `spec.sideEffects` | 必填 | 副作用声明对象。 |
+| `spec.sideEffects.declared` | 必填 | 可能发生的标准 side effect 数组。 |
+| `spec.checkpoint` | 可选，开放结构 | 建议或要求校对的提示，不是 Checkpoint 实例。 |
+| `spec.adapterRef` | 可选 | 如果 Skill 由外部来源提升而来，引用来源 Adapter。 |
+| `status` | 可选 | validator、registry 或 runtime 写入的事实状态。 |
 
-## 最小示例
+`inputs`、`outputs` 和 `checkpoint` 允许实现侧附加字段；`capabilities` 和 `sideEffects.declared` 是跨工具互操作的核心字段。
+
+## 最小合法示例
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
@@ -57,15 +72,35 @@ spec:
     reason: human-design-decision
 ```
 
-## status
+参考 example：`examples/skills/design-review.yaml`。
 
-Skill 通常是声明对象，不一定需要 status。由 registry 或 runtime 管理时，可以写入：
+## 验证规则
 
-- `SkillIndexed`
-- `SkillValidated`
-- `TrustResolved`
-- `CapabilityMapped`
+validator 至少应检查：
 
-## 设计约束
+- `kind` 必须是 `Skill`。
+- `metadata.name` 必须是合法本地对象名。
+- `spec.capabilities` 至少包含一个合法 capability，且不能重复。
+- `spec.sideEffects.declared` 必须存在，即使数组为空。
+- `sideEffects.declared` 只能使用标准枚举：`readFile`、`writeFile`、`deleteFile`、`executeCommand`、`modifyGitIndex`、`modifyGitHistory`、`networkAccess`、`sendMessage`、`publishRemote`、`spendMoney`、`accessSecret`、`installDependency`、`changePermission`。
+- 如果存在 `adapterRef`，它必须能解析到 `Adapter` 或在 condition 中标记 unresolved。
 
-Skill 应尽量无状态。不要把项目规则、团队偏好、执行日志或一次运行的产物写进 Skill。
+## 与相邻对象的边界
+
+| 容易混淆 | 边界 |
+| --- | --- |
+| `Skill` / `Adapter` | Skill 是原生能力声明；Adapter 是外部来源进入 Huoban 的标准化边界。 |
+| `Skill` / `Profile` | Skill 不携带项目上下文；Profile 注入项目规则、领域语言和历史决策。 |
+| `Skill` / `Flow` | Skill 声明能力；Flow 决定能力如何排列。 |
+| `Skill` / `Policy` | Skill 声明可能副作用；Policy 决定是否允许、拒绝或要求审批。 |
+
+## 常见错误
+
+- 把团队代码风格写进 Skill。应写入 `Profile.layers`。
+- 把执行顺序写进 Skill。应写入 `Flow.stages`。
+- 省略 `sideEffects.declared`。没有副作用也要显式写 `declared: []`。
+- 把外部 `SKILL.md` 直接视为 trusted Skill。默认应先生成 `Adapter`，review 后再提升。
+
+## 活字印刷位置
+
+Skill 对应“活字”。一枚活字必须有规格，才能进入字架、被选择、被排版、被润墨、被校对并最终参与印刷。Skill 的规格就是 capability、输入、输出和副作用边界。

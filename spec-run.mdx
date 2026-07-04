@@ -1,67 +1,113 @@
 ---
 title: "Run 对象"
 sidebarTitle: "Run"
-description: "Run 是 Huoban 的一次锁版印刷，冻结 Flow、Profile、Skill binding 和 Policy 快照。"
+description: "Run 是 Huoban 的一次锁版印刷，冻结 Flow、Profile、Policy、binding 和快照。"
 ---
 
 # Run 对象
 
-`Run` 是一次具体执行。它像锁版印刷：执行开始后，必须冻结当时的 Flow、Profile、Skill binding 和 Policy，避免后续修改影响复盘。
+`Run` 是一次具体执行或 dry-run 计划。它像锁版印刷：执行开始后，必须记录当时使用的 Flow、Profile、Policy、binding 和 snapshot，避免事后复盘被后续修改污染。
 
-## spec 字段
+规范页定义 Run 的字段形状和验证边界。为什么需要 Run，请读 [Run 模型](/run-model)。
+
+## 对象职责
+
+Run 解决的问题是：AI 工作不能只留下聊天记录或最终 diff。一次工作必须有可复盘的执行对象，说明“用哪套版式、哪套墨方、哪些规则、哪些能力绑定”。
+
+Run 负责描述：
+
+- 要执行或解释的 `flowRef`。
+- 本次追加或覆盖的 `profileRefs`。
+- 本次使用的 `policyRefs`。
+- capability role 到 Skill 或 Adapter 的 binding。
+- 本次执行的 mode。
+- Flow、Profile 和 binding 的 snapshot hash。
+- runtime 观察到的状态、stage、副作用和产物引用。
+
+Run 不负责：
+
+- 定义可复用工作流；这属于 `Flow`。
+- 保存大段产物内容；这属于 `Artifact`。
+- 审批继续执行；这属于 `Checkpoint`。
+- 定义副作用规则；这属于 `Policy`。
+
+## v1alpha1 字段
 
 | 字段 | 要求 | 说明 |
 | --- | --- | --- |
-| `flowRef` | 必填 | 指向要执行或解释的 Flow。 |
-| `profileRefs` | 可选 | 本次 Run 追加或覆盖的 Profile。 |
-| `policyRefs` | 可选 | 本次 Run 使用的 Policy。 |
-| `bindings` | 可选 | capability 到具体 Skill / Adapter 的解析。 |
-| `snapshot` | 推荐 | 锁定 hash、generation 和 resolved refs。 |
-| `mode` | 可选 | `explain`、`dryRun`、`execute`。 |
+| `spec.flowRef` | 必填 | 本次 Run 使用的 Flow 引用。 |
+| `spec.profileRefs` | 可选 | 本次 Run 追加或覆盖的 Profile 引用。 |
+| `spec.policyRefs` | 可选 | 本次 Run 使用的 Policy 引用。 |
+| `spec.mode` | 可选 | `explain`、`dryRun` 或 `execute`。 |
+| `spec.bindings` | 可选 | role 到 `skillRef` 或 `adapterRef` 的映射。 |
+| `spec.snapshot.flowSpecHash` | 可选 | Flow spec hash。 |
+| `spec.snapshot.profileSpecHash` | 可选 | effective Profile hash。 |
+| `spec.snapshot.skillBindingHash` | 可选 | binding hash。 |
+| `status.phase` | 可选 | runtime 观察到的阶段。 |
+| `status.currentStage` | 可选 | 当前 stage id。 |
+| `status.observedSideEffects` | 可选 | 实际观察到的副作用。 |
+| `status.artifacts` | 可选 | 实际产物引用。 |
 
-## 最小示例
+`bindings` 的 key 通常对应 `Flow.stages[].requires.role`。binding value 必须至少包含 `skillRef` 或 `adapterRef`，且不能包含其他字段。
+
+## 最小合法示例
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
 kind: Run
 metadata:
-  name: idea-to-spec-review-20260623
+  name: idea-to-spec-review-001
 spec:
   flowRef:
     name: idea-to-spec-review
-    generation: 4
+    generation: 1
   profileRefs:
-    - name: huoban-project
-      generation: 2
+    - name: huoban-open-source-project
+      generation: 1
+  policyRefs:
+    - name: safe-defaults
   mode: dryRun
+  bindings:
+    primary-review:
+      adapterRef: grill-me-skill-md
+    spec-writer:
+      skillRef: spec-outline-writer
   snapshot:
-    flowSpecHash: sha256:...
-    profileSpecHash: sha256:...
-    skillBindingHash: sha256:...
+    flowSpecHash: sha256:flow-placeholder
+    profileSpecHash: sha256:profile-placeholder
+    skillBindingHash: sha256:binding-placeholder
 ```
 
-## status 字段
+参考 example：`examples/runs/idea-to-spec-review-run.yaml`。
 
-| 字段 | 说明 |
+## 验证规则
+
+validator 至少应检查：
+
+- `kind` 必须是 `Run`。
+- `spec.flowRef.name` 必须存在。
+- `mode` 如果存在，只能是 `explain`、`dryRun` 或 `execute`。
+- 每个 binding 必须至少有 `skillRef` 或 `adapterRef`。
+- binding key 应能对应 Flow stage role；如果不能，写入 condition。
+- `status.observedSideEffects[].type` 只能使用标准 side effect。
+- `status.artifacts[]` 必须是 Artifact 引用形状。
+
+## 与相邻对象的边界
+
+| 容易混淆 | 边界 |
 | --- | --- |
-| `phase` | 当前阶段，例如 `Planned`、`Running`、`WaitingForCheckpoint`、`Completed`。 |
-| `observedGeneration` | status 对应的 Run generation。 |
-| `currentStage` | 当前 stage id。 |
-| `conditions` | 细粒度状态。 |
-| `observedSideEffects` | 实际观测到的副作用。 |
-| `artifacts` | 产物引用。 |
+| `Run` / `Flow` | Flow 是可复用版式；Run 是一次锁定执行。 |
+| `Run` / `Checkpoint` | Run 可以进入等待状态；Checkpoint 记录具体决策对象。 |
+| `Run` / `Artifact` | Run 引用产物；Artifact 保存产物元数据和内容引用。 |
+| `Run` / `Policy` | Run 使用 Policy；Policy 定义规则。 |
 
-## 常见 conditions
+## 常见错误
 
-- `RunPlanned`
-- `StageStarted`
-- `ArtifactProduced`
-- `CheckpointRequired`
-- `CheckpointApproved`
-- `UndeclaredSideEffectObserved`
-- `RunCompleted`
-- `RunFailed`
+- 在执行中悄悄切换到新 Flow 或新 Profile。应创建新 Run 或显式 resume。
+- 只有 `execute` 才创建 Run。`explain` 和 `dryRun` 也应该可记录为 Run。
+- 把实际副作用只留在日志里。应写入 `status.observedSideEffects`。
+- 把产物正文塞进 `status.artifacts`。这里只放引用。
 
-## 设计约束
+## 活字印刷位置
 
-正在执行的 Run 不应悄悄切换到新版本 Flow 或 Profile。用户修改 Flow 后，应创建新的 Run 或明确 resume 策略。
+Run 对应“锁版印刷”。版式、墨方、活字和规矩在一次印刷前被锁定；Run 让一次 AI 工作可印刷、可复盘。
