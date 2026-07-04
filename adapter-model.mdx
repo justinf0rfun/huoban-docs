@@ -1,0 +1,245 @@
+---
+title: "Adapter 模型"
+sidebarTitle: "Adapter 模型"
+description: "Adapter 是 Huoban 的异形活字转接件：把外部 skill、MCP tool、规则文件或工具能力标准化为可编排对象。"
+---
+
+`Adapter` 是 Huoban 的异形活字转接件：它把外部 skill、MCP tool、规则文件、团队脚本或工具能力，转成 Huoban 可理解、可排版、可审查的对象声明。
+
+它不是调用桥，也不是 MCP server。`Adapter` 的职责是声明外部能力如何进入 Huoban：来源是什么、提供哪些 capability、输入输出如何映射、声明哪些 side effects、是否建议 checkpoint、信任信息在哪里、失败或不兼容时如何处理。
+
+本页是扩展对象概念页，解释 `Adapter` 的设计边界和使用模型；字段级定义、必填项和 schema 约束见 [Adapter 规范](/spec-adapter)。
+
+<CardGroup cols={2}>
+  <Card title="声明外部来源" icon="plug" type="tip" color="#16A34A">
+    `source` 记录外部能力来自 `skillMd`、`mcpTool`、`claudeSkill`、`codexSkill`、`cursorRule`、`harness` 或 `local`。
+  </Card>
+  <Card title="映射为 capability" icon="route" type="tip" color="#16A34A">
+    `capabilities` 声明外部来源可以满足哪些 Huoban 能力需求。
+  </Card>
+  <Card title="声明副作用" icon="shield-check" type="tip" color="#16A34A">
+    `sideEffects.declared` 是计划和审批输入，不等于实际执行事实。
+  </Card>
+  <Card title="连接 Trust / Policy" icon="boxes" type="tip" color="#16A34A">
+    `trustRef` 指向信任记录，`Policy` 再基于 capability、side effect 和 trust level 审查行为边界。
+  </Card>
+</CardGroup>
+
+## Adapter 不是调用桥
+
+`Adapter` 的第一性职责是把外部能力标准化，而不是执行外部能力。
+
+| 对象 | 职责 | 不承担 |
+| --- | --- | --- |
+| `Skill` | 声明 Huoban 原生或已标准化的能力。 | 不描述外部来源如何被适配。 |
+| `Adapter` | 声明外部来源如何映射成 capability、输入输出、副作用和信任边界。 | 不执行工具，不保存运行事实，不证明来源可信。 |
+| `Policy` | 基于 capability、side effect、trust level 判断 allow / deny / requireApproval。 | 不推断外部工具 mapping。 |
+| `Run` | 在一次执行中把 Flow role / capability 绑定到具体 Skill 或 Adapter。 | 不重新定义 Adapter 的 source、mapping 和 sideEffects。 |
+| `Trust` | 记录 Adapter 或其他对象的来源、level、review、signatures、sandbox 和 policyRefs。 | 不自动授予执行权限。 |
+
+一句话：`Skill` 是标准活字，`Adapter` 是异形活字转接件。
+
+## 与 Skill 的边界
+
+外部 `SKILL.md`、MCP tool、Cursor Rule、团队脚本或内部 workflow 默认不应直接变成 trusted Skill。
+
+| 对象 | 表达内容 |
+| --- | --- |
+| `Skill` | 已经标准化的能力、输入输出、上下文提示和 declared side effects。 |
+| `Adapter` | 外部来源如何被解释为 Huoban capability，以及输入输出、副作用和信任边界如何映射。 |
+
+Adapter 可以经过 review 后派生或提升为 `Skill`，但这不是自动过程。导入外部 `SKILL.md` 时，默认结果应是 Adapter。
+
+## 与 Tool / MCP 的边界
+
+MCP tool、CLI、API 和内部脚本是外部能力来源；`Adapter` 是它们进入 Huoban 的标准化声明。
+
+Adapter 不替代 MCP server，也不规定某个工具的调用协议。它只声明：
+
+- 这个外部来源提供哪些 capability。
+- Huoban 输入输出如何映射到外部输入输出。
+- 可能产生哪些 declared side effects。
+- 是否有 checkpoint hints。
+- 信任记录由哪个 `Trust` 对象承载。
+
+调用协议、认证细节和请求参数细节不进入标准 Adapter；如需保留，应放在标准对象之外的实现侧材料中。`mapping` 只保留槽位映射，`checkpoint` 和 `fallback` 只保留非标准化提示。
+
+## 与 Profile 的边界
+
+`Profile` 处理“按什么上下文判断”，`Adapter` 处理“外部能力如何被使用和审查”。
+
+| 来源内容 | 应进入 |
+| --- | --- |
+| 团队规范、项目结构、领域语言、历史决策。 | `Profile` |
+| 可复用 skill、工具行为、脚本、workflow 或 capability-like 指令。 | `Adapter` |
+| AGENTS.md / CLAUDE.md / Cursor Rules 中的上下文规则。 | 通常进入 `Profile`。 |
+| AGENTS.md / CLAUDE.md / Cursor Rules 中的可复用能力或工具流程。 | 通过 `Adapter` 表达。 |
+
+不要把所有 Markdown 都导成 Adapter，也不要把可执行能力塞进 Profile。
+
+## 与 Policy 的边界
+
+`Adapter` 声明外部能力可能产生哪些 side effects；`Policy` 决定这些 side effects 在当前 trust level 下允许、拒绝或需要审批。
+
+```yaml
+# Adapter spec fragment
+sideEffects:
+  declared:
+    - readFile
+    - writeFile
+```
+
+```yaml
+# Policy spec fragment
+defaults:
+  unknownSideEffect: requireApproval
+rules:
+  - effect: requireApproval
+    when:
+      sideEffects:
+        - writeFile
+```
+
+Adapter 不能绕过 Policy，也不能通过声明自己安全来获得权限。未声明或无法判断的副作用应由 `Policy.spec.defaults.unknownSideEffect` 保守处理；当前 side effect enum 没有 `unknown`。
+
+## 与 Run binding 的边界
+
+`Adapter` 是可复用外部能力声明；`Run.spec.bindings` 是一次执行中的绑定结果。
+
+```yaml
+# Run spec fragment
+bindings:
+  primary-review:
+    adapterRef: grill-me-skill-md
+```
+
+边界是：
+
+- `Flow` 声明需要 capability。
+- `Adapter` 声明外部来源可以满足哪些 capability。
+- `Run.spec.bindings` 在一次具体执行中选择 Skill 或 Adapter。
+- `Run.spec.snapshot.skillBindingHash` 可以记录 binding 结果。
+
+当前 snapshot 不能声称完整冻结 Adapter spec。Adapter 不保存执行状态，Run 也不复制 Adapter 的 source、mapping 和 sideEffects。
+
+## 与 Trust 的边界
+
+`Adapter` 可以通过 `trustRef` 指向 `Trust`，但 Adapter 本身不证明可信。
+
+```yaml
+# Adapter spec fragment
+trustRef:
+  name: local-reviewed-grill-me
+```
+
+`Trust` 记录来源、level、review、signatures、sandbox 和 policyRefs。外部来源默认应按 `unknown` level 处理，review 后才可能成为 `reviewed` 或 `trusted`。无论 trust level 多高，执行仍受 Policy 约束。
+
+## source type
+
+v1alpha1 的 `Adapter.spec.source.type` 只支持以下值：
+
+| source type | 语义 |
+| --- | --- |
+| `skillMd` | 外部或本地 `SKILL.md`。 |
+| `mcpTool` | MCP tool。 |
+| `claudeSkill` | Claude skill。 |
+| `codexSkill` | Codex skill。 |
+| `cursorRule` | Cursor Rules。 |
+| `harness` | 外部 harness 类来源。 |
+| `local` | 本地脚本、文件或工具来源。 |
+
+这些是外部来源类型，不是 Huoban 的自我定位。`harness` 只表示某类外部来源可以被 Adapter 标准化，不能把 Huoban 写成 harness。
+
+## mapping
+
+`Adapter.spec.mapping` 只表达输入输出槽位的映射约定。
+
+```yaml
+mapping:
+  inputs:
+    prompt: user.prompt
+    context: profile.effectiveContent
+  outputs:
+    review: artifact.decisionNotes
+```
+
+当前 `mapping.inputs` 和 `mapping.outputs` 是字符串 map，不是完整转换语言。类型转换、模板执行、参数校验和复杂输出解析属于实现层或未来扩展。
+
+## checkpoint 与 fallback
+
+`Adapter.spec.checkpoint` 和 `Adapter.spec.fallback` 当前都是开放结构。
+
+```yaml
+checkpoint:
+  recommended: true
+  reason: SkillProducesDesignJudgment
+```
+
+```yaml
+fallback:
+  behavior: requireManualReview
+```
+
+示例中的 `recommended`、`reason`、`behavior` 是当前示例约定，不是 v1alpha1 固定字段。真正的决策边界由 `Checkpoint` 对象承载；重试、回滚、替代 Adapter 或降级流程属于实现约定或未来 schema 扩展。
+
+## 标准扩展对象
+
+`Adapter` 属于标准扩展对象。最小实现可以只处理原生 `Skill`，但开放生态要接入现有 `SKILL.md`、MCP tool、Cursor Rule、团队脚本和内部工具，就必须通过 Adapter 建立标准化边界。
+
+没有 Adapter，Huoban 要么只能重写所有能力，要么会把外部自然语言资产误认为原生可信 Skill。
+
+## 行业语言映射
+
+用当前行业语言看，`Adapter` 位于 tool adapter、MCP wrapping、skill import 和 capability normalization 的交叉点。
+
+| 行业概念 | Huoban 表达 |
+| --- | --- |
+| tool adapter | 外部工具通过 `Adapter` 声明 source、capability、mapping 和 side effects。 |
+| MCP wrapping | MCP tool 是 source type；Adapter 不替代 MCP server。 |
+| skill import | `SKILL.md` 默认导入为 Adapter，而不是 trusted Skill。 |
+| capability normalization | 不同来源先归一成 capability，再进入 Flow 和 Run binding。 |
+
+Huoban 不要求已有生态全部重写成原生对象。Adapter 让外部能力先进入同一套对象模型，再逐步 review、标准化和复用。
+
+## 结构示例
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Adapter
+metadata:
+  name: grill-me-skill-md
+  labels:
+    huoban.dev/imported-from: SKILL.md
+spec:
+  source:
+    type: skillMd
+    path: skills/grill-me/SKILL.md
+  capabilities:
+    - huoban.dev/designReview
+    - huoban.dev/planning
+  mapping:
+    inputs:
+      prompt: user.prompt
+      context: profile.effectiveContent
+    outputs:
+      review: artifact.decisionNotes
+  sideEffects:
+    declared:
+      - readFile
+      - writeFile
+  checkpoint:
+    recommended: true
+    reason: SkillProducesDesignJudgment
+  trustRef:
+    name: local-reviewed-grill-me
+status:
+  conditions:
+    - type: AdapterImported
+      status: "True"
+      reason: ImportedFromSkillMd
+    - type: ImportNeedsReview
+      status: "True"
+      reason: CapabilityAndSideEffectsInferred
+```
+
+这个示例来自 `examples/adapters/grill-me-skill-md.yaml`。它展示的是 `SKILL.md` 导入后的 Adapter：声明来源、能力、映射、副作用、checkpoint hint 和 trust 引用。

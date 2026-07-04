@@ -8,7 +8,7 @@ description: "把现有 SKILL.md 适配成 Huoban Adapter 或 Skill 对象。"
 
 `SKILL.md` 是现有 AI skill 生态的重要载体。
 
-但大多数 `SKILL.md` 并没有声明完整的输入输出 schema、capability、side effects、checkpoint behavior 和 trust metadata。因此 Huoban 不应该把它们直接视为原生 Skill，而应该默认导入为 `Adapter`。
+但大多数 `SKILL.md` 并没有声明完整的输入输出 schema、capability、side effects、checkpoint hints 和 trust metadata。因此 Huoban 不应该把它们直接视为原生 Skill，而应该默认导入为 `Adapter`。
 
 ## 定位
 
@@ -18,7 +18,7 @@ Huoban Adapter = standardization boundary
 Huoban Skill = normalized movable type
 ```
 
-Adapter 的职责不是“帮忙调用一下”，而是把异形活字磨成标准活字。
+Adapter 的职责不是“帮忙调用一下”，而是把异形活字装入可审查、可排版的转接边界。
 
 ## 命令
 
@@ -32,9 +32,8 @@ huoban import path/to/SKILL.md --as Adapter --out adapters/grill-me.yaml
 
 - `Adapter`：外部 skill 的标准化包装。
 - 可选 `Skill`：被 Adapter 标准化后的能力声明。
-- `capabilities`：可推断，但必须标记 review required。
-- `sideEffects`：无法确定时标记 unknown。
-- `content`：保留原始 SKILL.md。
+- `capabilities`：可推断，但必须通过 status condition 标记需要 review。
+- `sideEffects.declared`：能确认的副作用；无法确认时不要发明 `unknown`，由 `Policy.spec.defaults.unknownSideEffect` 保守处理。
 - `conditions`：写入 `ImportNeedsReview`。
 
 ## 示例
@@ -43,33 +42,39 @@ huoban import path/to/SKILL.md --as Adapter --out adapters/grill-me.yaml
 apiVersion: huoban.dev/v1alpha1
 kind: Adapter
 metadata:
-  name: mattpocock-grill-me-adapter
+  name: grill-me-skill-md
+  labels:
+    huoban.dev/imported-from: SKILL.md
 spec:
   source:
-    type: skill-md
+    type: skillMd
     path: skills/grill-me/SKILL.md
-  provides:
-    capabilities:
-      - huoban.dev/designReview
-      - huoban.dev/planning
-  inputMapping:
-    mode: prompt-prefix
-  outputMapping:
-    artifactKind: ReviewNotes
+  capabilities:
+    - huoban.dev/designReview
+    - huoban.dev/planning
+  mapping:
+    inputs:
+      prompt: user.prompt
+      context: profile.effectiveContent
+    outputs:
+      review: artifact.decisionNotes
   sideEffects:
     declared:
-      - unknown
-  checkpointBehavior:
-    default: required
-  trust:
-    level: untrusted
-    reviewRequired: true
+      - readFile
+      - writeFile
+  checkpoint:
+    recommended: true
+    reason: SkillProducesDesignJudgment
+  trustRef:
+    name: local-reviewed-grill-me
 status:
   conditions:
+    - type: AdapterImported
+      status: "True"
+      reason: ImportedFromSkillMd
     - type: ImportNeedsReview
       status: "True"
-      reason: SideEffectsUnknown
-      message: "Imported SKILL.md does not declare side effects explicitly."
+      reason: CapabilityAndSideEffectsInferred
 ```
 
 ## 为什么默认 Adapter
@@ -90,27 +95,24 @@ status:
 只有当 Adapter 补齐以下信息后，才可以生成或提升为标准 `Skill`：
 
 - `capabilities`
-- `inputSchema`
-- `outputSchema`
-- `declaredSideEffects`
-- `checkpointBehavior`
-- `contextRequirements`
-- `versionCompatibility`
-- `trust` metadata
+- 输入输出 schema 或可验证的 mapping 约定
+- declared side effects（`sideEffects.declared`）
+- checkpoint hints
+- 上下文要求说明
+- 版本兼容说明
+- 生成 `Skill` 时用 `adapterRef` 指回 Adapter
+- 信任信息由独立 `Trust` 对象表达；`trustRef` 只用于 Adapter
 
 ## 与 Policy 的关系
 
-如果 `sideEffects` 是 unknown，Policy 应保守处理：
+如果 side effects 无法判断或未声明，Policy 应保守处理。当前 side effect enum 没有 `unknown`，不要写 `sideEffects: [unknown]`。使用 `defaults.unknownSideEffect`：
 
 ```yaml
-rules:
-  - effect: requireApproval
-    when:
-      sideEffects:
-        - unknown
+defaults:
+  unknownSideEffect: requireApproval
 ```
 
-外部 skill 默认不可信，必须经过 review 才能提升 trust level。
+外部 skill 默认按 `unknown` trust level 处理，必须经过 review 才能提升为 `reviewed` 或 `trusted`。
 
 ## 适配优先于重写
 
