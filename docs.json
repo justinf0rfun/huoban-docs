@@ -38,6 +38,7 @@
           "flow-model",
           "run-model",
           "checkpoint-model",
+          "artifact-model",
           "policy-model",
           "adapter-model"
         ]

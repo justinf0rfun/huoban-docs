@@ -1,0 +1,249 @@
+---
+title: "Artifact 模型"
+sidebarTitle: "Artifact 模型"
+description: "Artifact 是 Huoban 的印张：把 AI 工作产物从聊天输出或临时文件变成可引用、可校对、可复盘的标准产物。"
+---
+
+`Artifact` 是 Huoban 的印张：把 AI 工作产物从聊天输出、临时文件或工具结果，变成可引用、可校对、可复盘的标准产物。
+
+它不是文件系统，也不是日志仓库。`Artifact` 记录一次 AI 工作产生了什么；在 Run 产物场景中，推荐记录它来自哪个 `Run` / stage、内容在哪里、摘要是什么、hash 是什么、当前审查状态是什么。
+
+本页属于核心概念，解释 `Artifact` 的设计边界和使用模型；字段级定义、必填项和 schema 约束见 [Artifact 规范](/spec-artifact)。
+
+<CardGroup cols={2}>
+  <Card title="记录实际产物" icon="file-code" type="tip" color="#16A34A">
+    `Artifact` 记录实际产生的文档、diff、报告、决策记录、测试结果或导出结果。
+  </Card>
+  <Card title="连接 Run 与 stage" icon="route" type="tip" color="#16A34A">
+    `runRef` 和 `stage` 说明产物来自哪一次执行、哪个阶段。
+  </Card>
+  <Card title="引用内容位置" icon="boxes" type="tip" color="#16A34A">
+    `contentRef` 指向文件、URL、Git blob 或对象内容，不内联大段正文。
+  </Card>
+  <Card title="进入校对链路" icon="shield-check" type="tip" color="#16A34A">
+    `review.status` 给出轻量状态；完整判断仍由 `Checkpoint` 承载。
+  </Card>
+</CardGroup>
+
+## Artifact 不是普通文件
+
+`Artifact` 的第一性职责是把结果对象化，而不是存储所有内容。
+
+| 对象 | 职责 | 不承担 |
+| --- | --- | --- |
+| `Flow` | 声明某个 stage 预期产出哪些 artifact type。 | 不保存实际产物。 |
+| `Run` | 记录一次执行实际产生了哪些 Artifact 引用。 | 不保存产物正文，不替代内容存储。 |
+| `Artifact` | 保存产物类型、来源、内容引用、hash、摘要和 review 状态。 | 不执行任务，不决定流程是否继续，不保存完整审查历史。 |
+| `Checkpoint` | 对一个或多个 Artifact 发起校对请求并记录决策边界。 | 不保存产物正文。 |
+| `Policy` | 判断行为是否允许、拒绝或需要审批。 | 不记录行为产物。 |
+
+一句话：`Flow` 是版式，`Run` 是一次锁版印刷，`Artifact` 是实际印出来的印张。
+
+## 什么应该成为 Artifact
+
+只有进入 Huoban 编排链路、需要被引用、审查、复盘或复用的产物，才应该成为 `Artifact`。
+
+| 应成为 Artifact | 不应默认成为 Artifact |
+| --- | --- |
+| 设计评审记录 | 普通聊天回复 |
+| 需求草案 | 临时 scratch 内容 |
+| 代码 diff | 未进入 Flow / Run 的本地文件 |
+| 测试报告 | 工具 stdout 的每一行 |
+| 生成的 Profile | agent 内部推理过程 |
+| 迁移结果 | 没有复用、审查或追溯价值的中间文本 |
+| 安全审查结论 | 一次性调试噪声 |
+| dry-run 输出 | 未命名、未引用的临时片段 |
+
+如果所有输出都是 Artifact，Huoban 会退化成日志系统；如果没有 Artifact，Huoban 又无法沉淀可审查产物。
+
+## 与 Flow outputs 的关系
+
+`Flow.spec.stages[].outputs` 是预期产物声明，`Artifact` 是实际产物记录。
+
+```yaml
+# Flow spec fragment
+stages:
+  - id: sharpen-idea
+    outputs:
+      - name: review-notes
+        artifactType: decision-notes
+```
+
+边界是：
+
+- `Flow` 声明某个 stage 预计产出什么类型的产物。
+- `Run` 执行后在 `status.artifacts` 中索引实际产物。
+- `Artifact` 记录该产物的 `type`、`runRef`、`stage`、`contentRef`、`hash` 和 `review`。
+
+不要把 `Flow.outputs` 写成产物本体，也不要让 `Artifact` 反过来定义流程预期。
+
+## 与 Run 的关系
+
+`Run.status.artifacts` 是一次执行里的产物索引，`Artifact` 是每个产物自己的标准对象。
+
+```yaml
+# Run status fragment
+artifacts:
+  - name: review-notes
+```
+
+```yaml
+# Artifact spec fragment
+runRef:
+  name: idea-to-spec-review-001
+stage: sharpen-idea
+contentRef:
+  type: file
+  path: artifacts/idea-review.md
+hash: sha256:artifact-placeholder
+```
+
+边界是：
+
+- `Run` 记录这次执行实际发生了什么。
+- `Run.status.artifacts` 引用这次执行产生的 Artifact。
+- `Artifact.spec.runRef` 可反向指回来源 Run。
+- `Artifact.spec.stage` 可说明来自哪个 stage。
+- `Artifact.spec.contentRef` 指向实际内容。
+- `Artifact.spec.hash` 用于完整性校验和复盘。
+
+不要把完整产物内容塞进 `Run.status`。Run 是执行视图，不是内容仓库。
+
+## 与 Checkpoint 的关系
+
+`Checkpoint` 常见的审查对象是 `Artifact`，而不是抽象的“这次感觉怎么样”。当前 v1alpha1 中 `artifactRefs` 是可选字段，因此不是每个 `Checkpoint` 都必须引用 Artifact；但一旦需要审查具体产物，就应该通过 `artifactRefs` 建立对象引用。
+
+```yaml
+# Checkpoint spec fragment
+artifactRefs:
+  - name: review-notes
+```
+
+边界是：
+
+- `Artifact` 保存被审查产物的元数据、引用和摘要。
+- `Checkpoint.spec.artifactRefs` 指向待审查产物。
+- `Checkpoint` 记录 approve / requestChanges / reject 等决策边界。
+- 一个 `Checkpoint` 可以审查多个 Artifact。
+- 一个 Artifact 也可能经历多个 Checkpoint。
+
+`Artifact.spec.review.status` 可以保存产物当前审查状态，但不替代 `Checkpoint` 的决策记录。
+
+## review status
+
+`Artifact.spec.review.status` 是产物当前审查状态的轻量标记，不是完整审批记录。
+
+| status | 语义 |
+| --- | --- |
+| `pending` | 产物待审查。 |
+| `approved` | 产物已通过某次校对。 |
+| `rejected` | 产物被拒绝。 |
+| `changesRequested` | 需要修改后再审。 |
+
+它不保存审批人、审批理由全文、评论线程、规则命中详情或完整决策历史。需要这些信息时，应通过 `Checkpoint`、关联评审 Artifact、实现侧记录或未来扩展表达。
+
+## contentRef 与 hash
+
+`Artifact` 是产物索引和元数据对象，不是内容仓库。
+
+当前 `contentRef.type` 支持：
+
+| contentRef type | 语义 |
+| --- | --- |
+| `file` | 仓库或工作区中的文件路径。 |
+| `url` | 外部 URL。 |
+| `gitBlob` | Git blob 引用。 |
+| `object` | 对象存储或实现侧对象引用；定位信息仍必须放在当前 schema 支持的 `path` 或 `url` 字段中。 |
+
+建议：
+
+- 小摘要放在 `summary`。
+- 大内容放文件、URL、Git blob 或对象存储。
+- `contentRef` 指向内容位置。
+- `hash` 用于校验内容完整性。
+- 不要把大段 Markdown、diff、日志或二进制内容内联进 Artifact。
+
+## type 命名
+
+`Artifact.spec.type` 当前是开放字符串，不是 enum。文档只能给推荐命名约定，不能写成协议强制枚举。
+
+推荐类型包括：
+
+| type | 适用产物 |
+| --- | --- |
+| `markdown` | 普通 Markdown 文档。 |
+| `diff` | 代码或文档变更 diff。 |
+| `decision-notes` | 决策记录、评审意见、方向判断。 |
+| `test-report` | 测试、验证或质量报告。 |
+| `profile` | 导出的 Profile 或上下文资产。 |
+| `policy-report` | Policy 审查结果。 |
+| `migration-result` | 迁移结果。 |
+| `dry-run-plan` | dry-run 产生的执行计划或预演结果。 |
+
+命名原则：
+
+- 描述产物形态或用途，不描述工具名。
+- 使用 kebab-case。
+- 不把临时文件名当 type。
+- 同类产物尽量复用同一个 type，方便 Registry 和 Checkpoint 处理。
+
+## 与 Policy 的关系
+
+`Policy` 管“能不能做”，`Artifact` 记录“做出了什么或准备做什么”。
+
+| 场景 | Policy | Artifact |
+| --- | --- | --- |
+| 写文件 | 判断是否允许写入。 | 记录 diff、patch 或变更报告。 |
+| 发 PR | 判断是否需要审批。 | 记录 PR 摘要、diff 或 release notes。 |
+| 发布远端变更 | 判断是否禁止、允许或 requireApproval。 | 记录 dry-run plan、部署摘要或发布记录。 |
+| 安全审查 | 判断风险边界。 | 记录审查材料或结论。 |
+
+对高风险行为，推荐先生成 `dry-run-plan`、`diff` 或 `policy-report` Artifact，再进入 `Checkpoint`。
+
+## 与 Registry 的关系
+
+`Registry` 可以索引可复用对象，包括 Artifact，但 Artifact 不是包管理对象。
+
+边界是：
+
+- `Registry` 保存可发现性。
+- `Artifact` 保存产物元数据和内容引用。
+- 普通一次性临时产物不需要注册。
+- 跨项目复用的产物应有稳定 `type`、`contentRef`、`hash` 和 review 状态。
+
+只有有复用、审查或归档价值的产物，才值得进入 Registry。
+
+## AI-native 结果层
+
+AI-native 文档不只是让 AI 能读文档，而是让 AI 工作的输入、过程、结果和审查点都能被对象化。`Artifact` 承担结果对象化。
+
+| 读者 | 看到什么 |
+| --- | --- |
+| 人类读者 | 产物摘要、review 状态和内容引用。 |
+| AI agent | `type`、`runRef`、`stage`、`contentRef`、`hash`、`review.status`。 |
+| 机器验证 | schema、hash 和对象引用链。 |
+| 公司实践反馈 | 哪些产物类型稳定，哪些产物需要新 type 或新 review 规则。 |
+
+`Artifact` 让 AI 工作的结果可以被描述、引用、校对、复用和迁移，而不是散落在聊天记录、临时文件和工具输出里。
+
+## 结构示例
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Artifact
+metadata:
+  name: review-notes
+spec:
+  type: decision-notes
+  runRef:
+    name: idea-to-spec-review-001
+  stage: sharpen-idea
+  contentRef:
+    type: file
+    path: artifacts/idea-review.md
+  hash: sha256:artifact-placeholder
+  review:
+    status: pending
+```
+
+这个示例来自 `examples/artifacts/review-notes.yaml`。它展示的是一次 `Run` 在 `sharpen-idea` stage 产生的决策记录产物：正文放在文件里，Artifact 保存类型、来源、内容引用、hash 和审查状态。
