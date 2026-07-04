@@ -1,189 +1,239 @@
 ---
 title: "Flow 模型"
 sidebarTitle: "Flow 模型"
-description: "Flow 是 Huoban 的版式：声明 capability、stage、checkpoint、artifact 和默认上下文。"
+description: "Flow 是 Huoban 的版式：声明 capability-first stage、默认 Profile、默认 Policy、checkpoint 和预期产物。"
 ---
 
-# Flow 模型
+`Flow` 是 Huoban 的版式：定义一类 AI 工作应该如何被排版。
 
-`Flow` 是 Huoban 的版式。
+它不执行任务，不保存结果，也不要求绑定某个具体 agent 工具。它描述的是工作结构：需要哪些 capability，分成哪些 stage，输入和输出如何传递，哪里需要 checkpoint，默认使用哪些 `Profile` 和 `Policy`。
 
-它描述一组 AI 能力如何被排列、传递、暂停、校验和产出。Flow 不应该只是命令脚本；它应该描述期望的 AI 工作结构。
+本页属于核心概念，解释 `Flow` 的设计边界和编排模型；字段级定义、必填项和 schema 约束见 [Flow 规范](/spec-flow)。
+
+<CardGroup cols={2}>
+  <Card title="版式不是执行" icon="route" type="tip" color="#16A34A">
+    `Flow` 描述这类 AI 工作如何排版；`Run` 才记录一次具体执行。
+  </Card>
+  <Card title="Capability-first" icon="plug" type="tip" color="#16A34A">
+    stage 优先声明需要什么能力，而不是先绑定某个具体 skill。
+  </Card>
+  <Card title="Stage 是能力边界" icon="layer-group" type="tip" color="#16A34A">
+    stage 描述 capability、输入、输出和校对边界，不是 shell step。
+  </Card>
+  <Card title="校对点显式" icon="shield-check" type="tip" color="#16A34A">
+    `checkpoints` 让高判断力或高风险位置在版式中可见。
+  </Card>
+</CardGroup>
+
+## Flow 不是 Run
+
+`Flow` 和 `Run` 的边界必须前置理解。
+
+| 对象 | 第一性职责 | 不承担 |
+| --- | --- | --- |
+| `Flow` | 可复用版式，声明工作结构、默认 `Profile` / `Policy` 和 checkpoint。 | 不保存执行结果、错误、耗时、实际副作用和产物引用。 |
+| `Run` | 一次印刷，锁定某个 Flow 的具体执行视图。 | 不重新定义这类工作的通用结构。 |
+| `Checkpoint` | 一次执行中发生的校对请求和决策边界。 | 不替代 Flow 的版式声明。 |
+| `Artifact` | 一次执行产生的具体产物、内容引用、hash 和 review。 | 不替代 Flow 的预期输出声明。 |
+
+一句话：`Flow` 定义一类 AI 工作的可复用结构；`Run` 记录一次具体执行。
 
 ## Flow 的职责
 
-Flow 应回答几个问题：
+Flow 应回答的问题是结构问题：
 
-- 这次任务需要哪些 capability？
-- 哪些 stage 应该先后执行？
-- 上一步产物如何成为下一步输入？
-- 哪些 stage 必须 checkpoint？
-- 预期会产生哪些 artifact？
-- 默认使用哪些 Profile 和 Policy？
-- 失败时应该重试、回退、暂停还是中止？
+- 这类工作需要哪些 capability？
+- 这些 capability 如何分成 stage？
+- 每个 stage 的输入来自哪里？
+- 每个 stage 预期输出什么 artifact 类型？
+- 哪些位置需要 checkpoint？
+- 默认使用哪些 `Profile` 和 `Policy`？
+
+当前 Flow schema 不定义 retry、rollback、pause、abort 这类控制流语义。实现可以在 status 中报告状态或等待 checkpoint，但重试、回退和中止策略不属于 v1alpha1 Flow 的承诺。
 
 ## Capability-first
 
-Flow 不应只绑定具体 skill。更好的模型是：Flow 引用 capability，Run 再绑定具体 skill 或 adapter。
+Flow 的主路径是 capability-first。stage 应优先声明“需要什么能力”，而不是“必须调用哪个 skill”。
 
 ```yaml
+apiVersion: huoban.dev/v1alpha1
 kind: Flow
 metadata:
   name: idea-to-spec-review
 spec:
+  profileRefs:
+    - name: huoban-open-source-project
+  policyRefs:
+    - name: safe-defaults
   stages:
-    - id: interrogate
+    - id: sharpen-idea
       requires:
         capability: huoban.dev/designReview
         role: primary-review
-      checkpoint:
-        required: true
+      inputs:
+        - name: idea
+          from: user.prompt
+      outputs:
+        - name: review-notes
+          artifactType: decision-notes
+  checkpoints:
+    - after: sharpen-idea
+      type: humanApproval
+      required: true
+      reason: ConfirmDirectionBeforeSpec
 ```
 
-Run 阶段再解析为具体实现：
+这个 Flow 没有说必须使用哪个具体 agent、skill 或 MCP server。它只声明 `sharpen-idea` 这个 stage 需要 `huoban.dev/designReview` 能力。一次具体执行中，`Run` 再把 role 绑定到可用的 `Skill` 或 `Adapter`。
 
 ```yaml
-kind: Run
-spec:
-  bindings:
-    primary-review:
-      skillRef: mattpocock/grill-me
+# Run spec fragment
+flowRef:
+  name: idea-to-spec-review
+mode: dryRun
+bindings:
+  primary-review:
+    adapterRef: grill-me-skill-md
+snapshot:
+  flowSpecHash: sha256:...
+  profileSpecHash: sha256:...
+  skillBindingHash: sha256:...
 ```
 
-这样 Flow 不会被某个具体 skill 锁死。
+这样同一个 Flow 可以在不同工具、团队和执行环境中复用。
 
 ## Shortcut 语法
 
-为了降低早期使用成本，Flow 可以允许 shortcut：
+v1alpha1 schema 允许 `uses` 作为兼容 shortcut：
 
 ```yaml
-stages:
-  - id: review
-    uses: mattpocock/grill-me
+# Stage fragment
+id: review
+uses: mattpocock/grill-me
 ```
 
-但标准方向仍应是 capability-first。Shortcut 应被视为语法糖，runtime 可以把它展开成 capability \+ binding。
+但 `uses` 不是推荐主路径。没有 registry、adapter 或 skill metadata 时，工具只能保留这个引用或标记为 unresolved，不能保证自动展开成 capability requirement 和 `Run` binding。
 
-## Stage
-
-Stage 是 Flow 的基本组成单元。
-
-建议字段：
+推荐主路径仍然是：
 
 ```yaml
-stages:
-  - id: draft-spec
-    name: Draft spec review
-    requires:
-      capability: huoban.dev/specification
-    input:
-      from: user.intent
-    output:
-      artifactKind: SpecDraft
-    checkpoint:
-      required: true
-      reason: HumanReviewRequired
+# Stage fragment
+id: review
+requires:
+  capability: huoban.dev/designReview
 ```
 
-Stage 应描述期望结果，而不是具体 shell 命令。
+## Stage 是能力边界
+
+Stage 是 Flow 中最小的能力编排单元。
+
+它不是 task step，也不是 shell step。它应该描述一段 AI 工作需要的 capability、输入、输出和校对边界。
+
+```yaml
+# Stage fragment
+id: draft-spec-outline
+requires:
+  capability: huoban.dev/specification
+  role: spec-writer
+inputs:
+  - name: review-notes
+    from: stages.sharpen-idea.outputs.review-notes
+outputs:
+  - name: spec-outline
+    artifactType: markdown
+```
+
+不要把 stage 写成：
+
+```yaml
+# Not a Huoban Flow stage
+run: npm test
+shell: bash
+command: claude -p "review this idea"
+```
+
+命令、CLI 参数、模型调用细节和工具私有字段应该进入 `Adapter`、导入层或实现私有扩展，不应污染 Flow 的核心对象。
 
 ## Checkpoint
 
-Checkpoint 是 Flow 的校对点。
-
-它可以由 Flow 显式声明，也可以由 Skill / Adapter / Policy 推导出来。
+Flow 可以声明哪里需要校对，但不保存校对结果。
 
 ```yaml
-checkpoint:
-  required: true
-  reason: HumanReviewRequired
-  actions:
-    - approve
-    - requestChanges
-    - reject
+# Flow spec fragment
+checkpoints:
+  - after: sharpen-idea
+    type: humanApproval
+    required: true
+    reason: ConfirmDirectionBeforeSpec
 ```
 
-常见触发原因：
+边界是：
 
-- 高风险副作用。
-- 设计判断尚未确认。
-- Eval 失败。
-- Profile 冲突。
-- Adapter 声明需要人工 review。
-- 外部 skill 未被信任。
+- `Flow.spec.checkpoints` 声明校对点。
+- `Checkpoint` 对象承载一次具体校对请求和决策上下文。
+- `Run.status.conditions` 记录这次执行是否正在等待 checkpoint。
+- `Artifact` 保存供审查的材料、输出正文或决策记录内容；审批状态和继续/停止决策应进入 `Checkpoint` / `Run` 状态。
+
+常见 checkpoint 触发原因包括高风险副作用、方向尚未确认、Profile 冲突、外部 Adapter 未被信任，或某个 stage 的输出需要人工判断。
 
 ## Artifact
 
-Flow 应声明预期产物：
+Flow 可以声明预期输出，不直接承载产物内容。
 
 ```yaml
+# Stage fragment
 outputs:
-  - id: review-notes
-    artifactKind: ReviewNotes
-  - id: decision-record
-    artifactKind: DecisionRecord
+  - name: review-notes
+    artifactType: decision-notes
+  - name: spec-outline
+    artifactType: markdown
 ```
 
-Artifact 不只是文件，也可以是：
+边界是：
 
-- 决策记录
-- 设计评审
-- 代码 diff
-- 测试结果
-- 迁移计划
-- Eval report
-- Checkpoint feedback
+| 位置 | 表达内容 |
+| --- | --- |
+| `Flow.spec.stages[].outputs` | 这个 stage 预期输出什么产物槽位和 artifact 类型。 |
+| `Run.status.artifacts` | 这次执行实际产生了哪些 artifact 引用。 |
+| `Artifact` | 产物类型、`contentRef`、`hash`、`review`、`runRef` 和 `stage`。 |
 
-## Flow 与 Profile
+Flow 声明 stage 预期输出；Artifact 记录一次执行实际产生的产物引用和审查状态。
 
-Flow 可以引用默认 Profile：
+## Profile 与 Policy
+
+Flow 可以声明默认 `Profile` 和 `Policy`。
 
 ```yaml
-spec:
-  profileRefs:
-    - huoban-open-source-project
+# Flow spec fragment
+profileRefs:
+  - name: huoban-open-source-project
+policyRefs:
+  - name: safe-defaults
 ```
 
-但 Run 可以覆盖或追加：
+这些是 Flow 的默认引用，不是一次执行的最终事实。`Run` 可以声明本次执行使用的 `profileRefs` / `policyRefs`。v1alpha1 只在 snapshot 中记录 flow、profile 和 binding hash；Policy 的锁定语义需要通过 refs、generation、status 或未来字段说明。
 
-```yaml
-kind: Run
-spec:
-  flowRef:
-    name: idea-to-spec-review
-  profileRefs:
-    - huoban-open-source-project
-    - strict-review-mode
-```
+这对应活字印刷术里的关系：同一版式可以换墨，也可以按不同印坊规矩印刷。
 
-这对应“同一版式，换墨再印”。
+## Context engineering 与 loop engineering
 
-## Flow 与 Policy
+用当前行业语言描述，Huoban 处理的是 context engineering、skill reuse 和 agent loop standardization 的交叉问题。
 
-Flow 也可以引用默认 Policy：
+但 Huoban 不把这些概念堆进一个大对象里：
 
-```yaml
-spec:
-  policyRefs:
-    - standard-human-checkpoint-policy
-```
+| 行业概念 | Huoban 对象拆分 |
+| --- | --- |
+| context engineering | `Profile` 负责上下文结构化、分层和合并；执行快照由 `Run` 记录。 |
+| agent loop structure | `Flow` 描述多阶段 AI 工作结构：capability、stage、输入输出和 checkpoint。 |
+| execution trace | `Run` 记录一次执行实际使用的 flow、profile、policy、binding、mode 和 snapshot。 |
+| judgment boundary | `Checkpoint` 让 agent loop 在高判断力或高风险位置停下来。 |
+| stage output | `Artifact` 留下 stage 输出、审查材料、hash 和复盘依据。 |
 
-Policy 不应写进 Profile。Profile 是上下文，Policy 是行为边界。
+当前 v1alpha1 的 Flow schema 没有定义完整 loop DSL。Flow 是描述 agent loop 结构的基础对象，不是任意循环控制语言。
 
-## idea-to-spec-review
+## 参考 Flow
 
-Huoban 第一条 demo flow 建议是：
+`idea-to-spec-review` 是 Huoban 的首个参考 Flow。
 
-```text
-idea-to-spec-review
-```
+它验证的不是“Huoban 能跑任意工作流”，而是一个更基础的标准化路径：现有 AI 能力可以被标准化成 `Skill` / `Adapter`，带着 `Profile` 排成 `Flow`，通过 `Checkpoint` 暴露判断边界，并在 `Run` / `Artifact` 中留下可审查记录。
 
-它展示：
-
-- 把 `grill-me` 适配成 Huoban Skill / Adapter。
-- 使用 `huoban-open-source-project` Profile。
-- 从用户 idea 生成 spec review。
-- 在 checkpoint 停住等待确认。
-- 产出 review notes 和 decision notes。
-
-这条 demo 的目标不是证明 Huoban 能跑任意工作流，而是证明：现有 AI 能力可以被标准化成活字，带着墨方排成版式，并通过校对控制风险。
+从 [示例：idea-to-spec-review](/example-idea-to-spec-review) 开始阅读完整对象链路。

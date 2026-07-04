@@ -8,6 +8,8 @@ Huoban 的对象模型定义 AI 原生工作的最小可描述结构。
 
 它不从“如何执行命令”开始，而是从“如何描述 AI 原生工作”开始：能力是什么，上下文是什么，如何编排，在哪些边界停下，允许哪些副作用，产物如何留下，来源是否可信。
 
+本页属于核心概念，解释对象模型的设计边界和阅读方式；字段级定义、必填项和 schema 约束见 [规范参考](/spec-reference)。
+
 AGENTS.md、CLAUDE.md、Cursor Rules 和 SKILL.md 都是重要入口，但它们通常把上下文、能力、权限、执行意图和审查边界混在自然语言里。Huoban 对象模型的作用，是把这些内容拆成不同职责的对象：上下文进入 `Profile`，能力进入 `Skill` 或 `Adapter`，权限进入 `Policy`，编排进入 `Flow`，执行快照进入 `Run`，决策边界进入 `Checkpoint`。
 
 <CardGroup cols={2}>
