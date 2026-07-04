@@ -1,0 +1,207 @@
+---
+title: "Checkpoint 模型"
+sidebarTitle: "Checkpoint 模型"
+description: "Checkpoint 是 Huoban 的校对对象：把一次 AI 工作中的高判断力、高风险或高不确定边界变成可追踪的决策请求。"
+---
+
+`Checkpoint` 是 Huoban 的校对对象：当一次 AI 工作进入高判断力、高风险或高不确定位置时，它把继续执行前必须处理的判断显式化。
+
+它不是确认按钮，也不是聊天里的“等我确认”。`Checkpoint` 记录哪个 `Run`、哪个 stage、为什么不能继续自动推进、允许哪些动作、基于哪些 `Artifact` 判断，并让判断结果进入可审查链路。
+
+本页属于核心概念，解释 `Checkpoint` 的设计边界和使用模型；字段级定义、必填项和 schema 约束见 [Checkpoint 规范](/spec-checkpoint)。
+
+<CardGroup cols={2}>
+  <Card title="显式决策边界" icon="shield-check" type="tip" color="#16A34A">
+    `Checkpoint` 把 approve、requestChanges、reject 从聊天上下文变成协议对象。
+  </Card>
+  <Card title="绑定 Run 与 stage" icon="git-branch" type="tip" color="#16A34A">
+    `runRef` 和 `stage` 说明这次校对发生在一次具体执行的哪个位置。
+  </Card>
+  <Card title="引用审查材料" icon="file-code" type="tip" color="#16A34A">
+    `artifactRefs` 指向待审查产物，但不保存产物正文。
+  </Card>
+  <Card title="尊重规则与信任" icon="boxes" type="tip" color="#16A34A">
+    `Policy`、`Trust`、eval 和 runtime 都可以触发 `Checkpoint`，但不被它替代。
+  </Card>
+</CardGroup>
+
+## Checkpoint 不是确认按钮
+
+`Checkpoint` 的第一性职责是把判断边界对象化，而不是提供一个 UI 操作。
+
+| 对象 | 职责 | 不承担 |
+| --- | --- | --- |
+| `Flow` | 声明哪里可能需要校对。 | 不保存一次具体校对请求和结果。 |
+| `Policy` | 声明什么情况下不能自动继续。 | 不保存某次审批结论。 |
+| `Run` | 记录一次执行是否等待 checkpoint。 | 不承载 checkpoint 专属动作集或产物正文；Artifact 引用仍可出现在 `Run.status.artifacts`。 |
+| `Checkpoint` | 承载一次具体校对请求和决策边界。 | 不执行任务，不调度 runtime，不保存产物正文。 |
+| `Artifact` | 保存产物元数据、`contentRef`、hash 和 review。 | 不决定流程是否继续。 |
+
+一句话：`Flow` 定义版式，`Run` 记录这一次印刷，`Checkpoint` 在关键处留下校对请求。
+
+## 触发来源
+
+Checkpoint 的常见触发来源可以包括以下几类；v1alpha1 只通过 `spec.reason` 表达原因，不标准化 trigger source。
+
+| 类型 | 触发来源 | 例子 |
+| --- | --- | --- |
+| 版式边界 | `Flow.spec.checkpoints` | 某个 stage 后必须确认方向。 |
+| 规矩边界 | `Policy` | 写文件、发布、访问网络或使用密钥前需要审批。 |
+| 信任边界 | 低信任对象、外部 Adapter 或相关 Policy 判断 | 外部 skill 未审查、来源信任等级不足。 |
+| 质量边界 | eval / artifact / profile / binding | eval 失败、产物不达标、Profile 冲突、能力绑定不确定。 |
+
+触发来源可以不同，但对象职责相同：声明为什么不能继续自动推进、需要哪些允许动作、关联哪些 artifact，并让决策进入可审查链路。
+
+## 与 Run 的边界
+
+`Run` 是一次执行视图和状态索引，`Checkpoint` 是某个 run / stage 上的具体校对请求。
+
+```yaml
+# Run status fragment
+phase: WaitingForCheckpoint
+currentStage: sharpen-idea
+conditions:
+  - type: CheckpointRequired
+    status: "True"
+    reason: ConfirmDirectionBeforeSpec
+```
+
+```yaml
+# Checkpoint spec fragment
+runRef:
+  name: idea-to-spec-review-001
+stage: sharpen-idea
+reason: ConfirmDirectionBeforeSpec
+requiredActions:
+  - approve
+  - requestChanges
+  - reject
+artifactRefs:
+  - name: review-notes
+```
+
+边界是：
+
+- `Run.status.conditions` 记录状态摘要。
+- `Checkpoint.spec.runRef` 绑定这次校对对应的 Run。
+- `Checkpoint.spec.stage` 说明校对发生在哪个 stage。
+- `Checkpoint.spec.reason` 和 `requiredActions` 承载具体决策请求。
+
+当前 v1alpha1 的 `Run.status.conditions` 没有 `checkpointRef` 字段。实现可以通过 `runRef`、`stage`、`reason`、命名约定或外部索引建立关联，但不要把这个关联写成 schema 已经强制支持。
+
+## 与 Policy 的边界
+
+`Policy` 决定什么情况下不能自动继续，`Checkpoint` 记录这一次为什么停下以及允许怎样继续。
+
+| 对象 | 问题 | 示例 |
+| --- | --- | --- |
+| `Policy` | 什么情况必须审批？ | 未知 side effect、低 trust、发布远端变更。 |
+| `Checkpoint` | 这一次为什么需要判断？ | 当前 run 在 `sharpen-idea` stage 需要确认方向。 |
+
+`Policy` 可以触发 `Checkpoint`，但 `Checkpoint` 不替代 `Policy`。`Checkpoint` 的结果也不应反向改写长期权限规则。
+
+## 与 Artifact 的边界
+
+`Artifact` 是校样材料，`Checkpoint` 是校对请求。
+
+```yaml
+# Checkpoint spec fragment
+artifactRefs:
+  - name: review-notes
+```
+
+边界是：
+
+- `Checkpoint.spec.artifactRefs` 只引用待审查产物。
+- `Artifact` 保存产物类型、`contentRef`、hash、review、runRef 和 stage。
+- `Checkpoint` 不保存产物正文。
+- `Artifact.review` 可以表达产物审查状态，但流程继续、修改或拒绝的动作属于 `Checkpoint` 的决策语义。
+
+不要把 `Checkpoint` 写成产物验收报告，也不要把 `Artifact.review` 写成流程控制器。
+
+## requiredActions
+
+v1alpha1 的 `Checkpoint` 只承认三种最小动作。
+
+| action | 语义 |
+| --- | --- |
+| `approve` | 允许当前路径继续。 |
+| `requestChanges` | 要求修改后再进入后续判断。 |
+| `reject` | 拒绝当前继续请求或当前决策路径。 |
+
+暂停、重试、回滚、转派和强制覆盖属于更复杂的 runtime 策略，不是当前 `Checkpoint.spec.requiredActions` 已经支持的动作。
+
+产物是否被验收应由 `Artifact.review` 表达，不应混进 `Checkpoint.spec.requiredActions`。
+
+## status 表达结果
+
+`Checkpoint.spec.requiredActions` 声明允许的决策动作，实际结果进入通用 `status`。
+
+```yaml
+status:
+  phase: Pending
+  conditions:
+    - type: CheckpointRequired
+      status: "True"
+      reason: HumanDesignDecisionRequired
+```
+
+常见状态包括：
+
+| 位置 | 表达内容 |
+| --- | --- |
+| `status.phase` | `Pending`、`Approved`、`Rejected`、`ChangesRequested`、`Expired` 等状态摘要。 |
+| `status.conditions` | `CheckpointRequired`、`CheckpointApproved`、`CheckpointRejected`、`CheckpointExpired` 等机器可读事件。 |
+
+这些是推荐或常见取值，不是 v1alpha1 schema enum。当前 schema 使用通用 `status` 结构表达状态。
+
+当前 v1alpha1 不包含 `decision`、`approvedBy`、`comments` 等专用字段。需要记录评论、审查材料或详细理由时，应通过 `Artifact`、实现侧记录或未来扩展表达，不能写成当前协议字段。
+
+## 不是 runtime 控制流
+
+`Checkpoint` 可以影响 runtime 是否继续，但它本身不是 runtime 控制流对象。
+
+它不调度任务、不重试、不回滚、不保存队列状态。`expiresAt` 只表达这次校对请求的时间边界，不定义过期后的自动执行策略。
+
+runtime 可以根据 `Checkpoint` 做暂停、恢复、重试或回滚，但这些属于实现层，不是 v1alpha1 `Checkpoint` 对象本身的承诺。
+
+## 行业语言映射
+
+用当前行业语言看，`Checkpoint` 位于 human-in-the-loop、eval gate、approval workflow 和 agent loop pause 的交叉点。
+
+| 行业概念 | Huoban 表达 |
+| --- | --- |
+| human-in-the-loop | 人类判断进入 `Checkpoint`，而不是只停留在聊天记录。 |
+| eval gate | eval 可以触发 `Checkpoint`，但 `Checkpoint` 不执行 eval。 |
+| approval workflow | `Policy` 可以要求审批，`Checkpoint` 承载这一次审批请求。 |
+| agent loop pause | agent loop 可以在 `Checkpoint` 停住，但暂停恢复策略属于 runtime。 |
+
+Huoban 不把这些概念堆进一个大对象里，而是收敛成一个判断边界对象：在某个 run / stage 上，为什么不能继续自动推进，需要哪些动作，基于哪些 artifact 判断。
+
+## 结构示例
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Checkpoint
+metadata:
+  name: idea-to-spec-review-001-direction
+spec:
+  runRef:
+    name: idea-to-spec-review-001
+  stage: sharpen-idea
+  reason: ConfirmDirectionBeforeSpec
+  requiredActions:
+    - approve
+    - requestChanges
+    - reject
+  artifactRefs:
+    - name: review-notes
+status:
+  phase: Pending
+  conditions:
+    - type: CheckpointRequired
+      status: "True"
+      reason: HumanDesignDecisionRequired
+```
+
+这个示例来自 `examples/checkpoints/idea-to-spec-review-direction.yaml`。它展示的是方向确认处的校对请求：绑定一次 Run 和一个 stage，声明允许动作，并引用待审查 Artifact。

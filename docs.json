@@ -36,7 +36,8 @@
           "object-model",
           "profile-model",
           "flow-model",
-          "run-model"
+          "run-model",
+          "checkpoint-model"
         ]
       },
       {
