@@ -1,27 +1,50 @@
 ---
 title: "Registry 对象"
 sidebarTitle: "Registry"
-description: "Registry 是 Huoban 的字架对象，用于组织、索引和发现 Skill、Adapter、Flow 与 Profile。"
+description: "Registry 是 Huoban 的字架对象，用于组织、索引和发现 Skill、Adapter、Flow、Profile 等对象来源。"
 ---
 
 # Registry 对象
 
-`Registry` 是 Huoban 的字架：它组织、索引和发现可复用对象。
+`Registry` 是 Huoban 的字架：它组织、索引和发现可复用对象来源。
 
-v0.1 应定义 Registry 对象，但不急着建设 hosted registry 或 marketplace。
+规范页定义 Registry 的字段形状和验证边界。为什么 Registry 不是 marketplace，请读 [Registry 模型](/registry-model)。
 
-## spec 字段
+## 对象职责
+
+Registry 解决的问题是：可复用对象不能只靠人记住文件路径或复制粘贴。工具需要知道从哪里加载对象、索引哪些 kind、应用什么信任策略。
+
+Registry 负责描述：
+
+- 对象来源。
+- 来源类型和位置。
+- 静态索引配置。
+- 适用的 trust policy。
+- registry 加载和索引状态。
+
+Registry 不负责：
+
+- 托管对象或商业分发。
+- 对对象质量排名或推荐。
+- 替代 Trust review。
+- 替代 schema validation。
+- 直接执行 Flow。
+
+## v1alpha1 字段
 
 | 字段 | 要求 | 说明 |
 | --- | --- | --- |
-| `sources` | 必填 | registry 来源数组。 |
-| `sources[].type` | 必填 | `local`、`git`、`http`、`mcp`。 |
-| `sources[].path` | 条件必填 | local 来源路径。 |
-| `sources[].url` | 条件必填 | git/http/mcp 来源地址。 |
-| `index` | 可选 | 静态索引配置。 |
-| `trustPolicyRef` | 可选 | 来源信任策略。 |
+| `spec.sources` | 必填，至少 1 个 | registry 来源数组。 |
+| `spec.sources[].type` | 必填 | `local`、`git`、`http`、`mcp`。 |
+| `spec.sources[].path` | 与 `url` 至少一个 | 本地路径。 |
+| `spec.sources[].url` | 与 `path` 至少一个 | git、http 或 mcp 来源地址。 |
+| `spec.index.includeKinds` | 可选 | 需要索引的 kind 列表。 |
+| `spec.trustPolicyRef` | 可选 | 适用于 registry 来源的 Policy 引用。 |
+| `status` | 可选 | loaded、indexed、source unavailable 等状态。 |
 
-## 最小示例
+`sources[].type` 和 `path/url` 的组合由 workspace validator 进一步解释；schema 只要求每个 source 至少有 `path` 或 `url`。
+
+## 最小合法示例
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
@@ -31,27 +54,49 @@ metadata:
 spec:
   sources:
     - type: local
-      path: ./huoban
-    - type: git
-      url: https://example.com/org/huoban-objects.git
+      path: ./examples
   index:
     includeKinds:
       - Skill
       - Adapter
       - Flow
       - Profile
+      - Policy
+      - Run
+      - Checkpoint
+      - Artifact
+      - Trust
 ```
 
-## status
+参考 example：`examples/registry/local-registry.yaml`。
 
-常见 conditions：
+## 验证规则
 
-- `RegistryLoaded`
-- `SourceIndexed`
-- `SourceUnavailable`
-- `TrustPolicyApplied`
-- `ObjectInvalid`
+validator 至少应检查：
 
-## 设计约束
+- `kind` 必须是 `Registry`。
+- `spec.sources` 至少包含一个 source。
+- `sources[].type` 只能是 `local`、`git`、`http`、`mcp`。
+- 每个 source 至少有 `path` 或 `url`。
+- `includeKinds` 如果存在，应只包含 workspace 支持的 kind。
+- `trustPolicyRef` 如果存在，应能解析到 `Policy` 或写入 unresolved condition。
 
-Registry 不是 marketplace。早期 Registry 的目标是本地发现、静态索引和 schema validation，不做排名、推荐、托管发布和商业分发。
+## 与相邻对象的边界
+
+| 容易混淆 | 边界 |
+| --- | --- |
+| `Registry` / `Trust` | Registry 说明对象从哪里来；Trust 说明来源是否被审查。 |
+| `Registry` / `Adapter` | Registry 发现外部对象；Adapter 标准化单个外部能力。 |
+| `Registry` / `Policy` | Registry 可引用 trust policy；Policy 定义副作用规则。 |
+| `Registry` / marketplace | Registry 是索引和发现，不是分发市场或推荐系统。 |
+
+## 常见错误
+
+- 把 Registry 做成 hosted marketplace 的承诺。v1alpha1 只承诺对象来源索引。
+- 省略 Trust 和 Policy。外部来源即使能加载，也不代表可信或可执行。
+- 把 includeKinds 当作权限控制。它只是索引范围，不是执行授权。
+- 在 Registry 里内联对象正文。Registry 指向来源，不替代对象文件。
+
+## 活字印刷位置
+
+Registry 对应“字架”。字架让活字可收纳、可查找、可复用；Registry 让 Huoban 对象可以被工具发现和索引。

@@ -1,28 +1,56 @@
 ---
 title: "Trust 对象"
 sidebarTitle: "Trust"
-description: "Trust 是 Huoban 的信任元数据对象，描述来源、审查、签名、sandbox 和风险边界。"
+description: "Trust 是 Huoban 的来源信任对象，记录 subject、source、level、review、signature、sandbox 和 policy 引用。"
 ---
 
 # Trust 对象
 
-`Trust` 描述一个 Skill、Adapter、Registry source 或 Artifact 的信任信息。
+`Trust` 是 Huoban 的来源信任记录。它描述一个对象来自哪里、被谁审查过、是否有签名、建议什么 sandbox、适用哪些 Policy。
 
-所有外部能力默认不可信。Trust 不是单一布尔值，而是 source、version、review、signature、policy、sandbox 和 provenance 的组合。
+规范页定义 Trust 的字段形状和验证边界。为什么 Trust 不等于权限，请读 [信任模型](/trust-model)。
 
-## spec 字段
+## 对象职责
+
+Trust 解决的问题是：外部对象不能因为能被加载就被默认信任。Skill、Adapter、Registry source 或 Artifact 都需要来源、审查和隔离信息。
+
+Trust 负责描述：
+
+- 被描述的对象。
+- 来源类型和位置。
+- 信任等级。
+- 审查信息。
+- 签名或 provenance 信息。
+- sandbox 要求。
+- 适用 Policy。
+
+Trust 不负责：
+
+- 允许或拒绝副作用；这属于 `Policy`。
+- 记录实际执行；这属于 `Run`。
+- 证明内容一定正确；它只记录审查状态和来源信息。
+- 替代 human review；它保存 review 结果。
+
+## v1alpha1 字段
 
 | 字段 | 要求 | 说明 |
 | --- | --- | --- |
-| `subjectRef` | 必填 | 被描述的对象。 |
-| `source` | 必填 | 来源信息。 |
-| `level` | 必填 | 信任等级，例如 `unknown`、`reviewed`、`trusted`。 |
-| `review` | 可选 | 审查人、时间和结论。 |
-| `signatures` | 可选 | 签名或 provenance 信息。 |
-| `sandbox` | 可选 | 推荐或要求的运行隔离。 |
-| `policyRefs` | 可选 | 适用策略。 |
+| `spec.subjectRef` | 必填 | 被描述对象，必须包含 `kind` 和 `name`。 |
+| `spec.source` | 必填 | 来源信息。 |
+| `spec.source.type` | 必填 | `local`、`git`、`http`、`registry`、`unknown`。 |
+| `spec.source.path` | 可选 | 本地路径。 |
+| `spec.source.url` | 可选 | 外部 URL。 |
+| `spec.level` | 必填 | `unknown`、`reviewed`、`trusted`。 |
+| `spec.review` | 可选 | 审查人、时间和结论。 |
+| `spec.signatures` | 可选，开放对象数组 | 签名或 provenance 信息。 |
+| `spec.sandbox.required` | 可选 | 是否要求 sandbox。 |
+| `spec.sandbox.network` | 可选 | `allow`、`deny`、`restricted`。 |
+| `spec.policyRefs` | 可选 | 适用 Policy 引用。 |
+| `status` | 可选 | resolved、signature verified、review required 等状态。 |
 
-## 最小示例
+`level` 是来源信任等级，不是执行授权。执行授权必须通过 Policy 解释。
+
+## 最小合法示例
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
@@ -38,7 +66,7 @@ spec:
     path: skills/grill-me/SKILL.md
   level: reviewed
   review:
-    reviewer: justin
+    reviewer: core-maintainer
     reviewedAt: "2026-06-23T12:00:00Z"
     conclusion: approved-for-local-use
   sandbox:
@@ -48,16 +76,36 @@ spec:
     - name: safe-defaults
 ```
 
-## status
+参考 example：`examples/trust/local-reviewed-grill-me.yaml`。
 
-常见 conditions：
+## 验证规则
 
-- `TrustResolved`
-- `SignatureVerified`
-- `ReviewRequired`
-- `SandboxRequired`
-- `TrustExpired`
+validator 至少应检查：
 
-## 设计约束
+- `kind` 必须是 `Trust`。
+- `subjectRef.kind` 和 `subjectRef.name` 必须存在。
+- `source.type` 只能是 `local`、`git`、`http`、`registry`、`unknown`。
+- `level` 只能是 `unknown`、`reviewed`、`trusted`。
+- `sandbox.network` 如果存在，只能是 `allow`、`deny`、`restricted`。
+- `policyRefs` 如果存在，应能解析到 `Policy` 或写入 unresolved condition。
+- `subjectRef` 应能解析到 workspace 对象；不能解析时写入 condition。
 
-Trust 不替代 Policy。Trust 描述“这个对象来自哪里、被怎么审查过”；Policy 决定“运行时允许它做什么”。
+## 与相邻对象的边界
+
+| 容易混淆 | 边界 |
+| --- | --- |
+| `Trust` / `Policy` | Trust 描述来源和审查；Policy 决定运行时允许什么。 |
+| `Trust` / `Adapter` | Adapter 描述外部能力如何映射；Trust 描述该来源是否被审查。 |
+| `Trust` / `Registry` | Registry 指向对象来源；Trust 评估来源信任。 |
+| `Trust` / `Artifact.review` | Trust 可以描述产物来源；Artifact.review 描述产物审查状态。 |
+
+## 常见错误
+
+- 看到 `level: trusted` 就跳过 Policy。即使 trusted，也要按 Policy 执行。
+- 没有 `subjectRef.kind`。Trust 必须明确描述哪个 kind 的哪个对象。
+- 把 sandbox 当作实际隔离实现。Trust 只声明要求，runtime 负责执行。
+- 把 review 结论写成不可机器解析的大段文字。应保留稳定 `conclusion` 字段。
+
+## 活字印刷位置
+
+Trust 对应“来源信任记录”。字从哪里来、谁校过、能不能进入印坊、需要什么隔离，都应该可见；Trust 让 Huoban 的复用不变成盲目信任。

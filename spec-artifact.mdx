@@ -1,56 +1,102 @@
 ---
 title: "Artifact 对象"
 sidebarTitle: "Artifact"
-description: "Artifact 是 Huoban 的产物对象，记录一次 Run 产生的文档、代码、diff、报告或决策记录。"
+description: "Artifact 是 Huoban 的产物对象，记录一次 Run 产生的文档、代码、diff、报告、决策记录或导出结果。"
 ---
 
 # Artifact 对象
 
-`Artifact` 是一次 AI 工作留下的可审查产物。它可以是文档、代码、diff、报告、评审意见、决策记录、测试结果或导出的 Profile。
+`Artifact` 是 Huoban 的印张：一次 AI 工作留下的可审查产物。
 
-Artifact 让 Run 不只停留在聊天记录里。
+规范页定义 Artifact 的字段形状和验证边界。为什么 Artifact 需要独立对象，请读 [Artifact 模型](/artifact-model)。
 
-## spec 字段
+## 对象职责
+
+Artifact 解决的问题是：产物不能只存在于聊天结果、终端输出或临时文件里。它必须被命名、引用、hash、审查，并能连接回 Run 和 stage。
+
+Artifact 负责描述：
+
+- 产物类型。
+- 产物来自哪个 Run。
+- 产物来自哪个 stage。
+- 产物内容在哪里。
+- 摘要和 hash。
+- 审查状态。
+
+Artifact 不负责：
+
+- 保存执行快照；这属于 `Run`。
+- 声明预期输出；这属于 `Flow.stages[].outputs`。
+- 审批继续执行；这属于 `Checkpoint`。
+- 存储无限大内容；大内容应通过 `contentRef` 引用。
+
+## v1alpha1 字段
 
 | 字段 | 要求 | 说明 |
 | --- | --- | --- |
-| `type` | 必填 | 产物类型，例如 `markdown`、`diff`、`profile`、`decision-notes`。 |
-| `runRef` | 推荐 | 产物来自哪个 Run。 |
-| `stage` | 可选 | 产物来自哪个 stage。 |
-| `contentRef` | 可选 | 指向文件、对象存储、git blob 或外部 URL。 |
-| `summary` | 可选 | 产物摘要。 |
-| `hash` | 推荐 | 内容 hash，用于复盘和完整性校验。 |
-| `review` | 可选 | 审查状态。 |
+| `spec.type` | 必填 | 产物类型，例如 `markdown`、`diff`、`decision-notes`、`profile`。 |
+| `spec.runRef` | 可选 | 产物来自哪个 Run。 |
+| `spec.stage` | 可选 | 产物来自哪个 stage。 |
+| `spec.contentRef` | 可选 | 产物内容引用。 |
+| `spec.contentRef.type` | `contentRef` 内必填 | `file`、`url`、`gitBlob`、`object`。 |
+| `spec.contentRef.path` | 可选 | 文件路径或对象路径。 |
+| `spec.contentRef.url` | 可选 | 外部 URL。 |
+| `spec.summary` | 可选 | 面向人和 agent 的摘要。 |
+| `spec.hash` | 可选 | 内容 hash。 |
+| `spec.review.status` | 可选 | `pending`、`approved`、`rejected`、`changesRequested`。 |
+| `status` | 可选 | indexed、produced、reviewed 等状态。 |
 
-## 最小示例
+v1alpha1 不规定产物类型枚举，因为不同实现会产生不同 artifact type。跨工具互操作应优先使用稳定、可解释的 type 字符串。
+
+## 最小合法示例
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
 kind: Artifact
 metadata:
-  name: idea-review-notes
+  name: review-notes
 spec:
   type: decision-notes
   runRef:
-    name: idea-to-spec-review-20260623
+    name: idea-to-spec-review-001
   stage: sharpen-idea
   contentRef:
     type: file
     path: artifacts/idea-review.md
-  hash: sha256:...
+  hash: sha256:artifact-placeholder
   review:
     status: pending
 ```
 
-## status
+参考 example：`examples/artifacts/review-notes.yaml`。
 
-常见 conditions：
+## 验证规则
 
-- `ArtifactProduced`
-- `ArtifactIndexed`
-- `ArtifactReviewed`
-- `ArtifactRejected`
+validator 至少应检查：
 
-## 设计约束
+- `kind` 必须是 `Artifact`。
+- `spec.type` 必须存在。
+- `contentRef.type` 如果存在，只能是 `file`、`url`、`gitBlob`、`object`。
+- `review.status` 如果存在，只能是 `pending`、`approved`、`rejected`、`changesRequested`。
+- 如果 `runRef` 和 `stage` 存在，workspace validator 应确认 stage 能解析到对应 Run 的 Flow。
+- 如果 `hash` 存在，validator 可以检查格式，但 v1alpha1 不强制 hash 算法。
 
-Artifact 对象不一定内联大段内容。大内容应通过 `contentRef` 引用，避免 status 或 Run 对象膨胀。
+## 与相邻对象的边界
+
+| 容易混淆 | 边界 |
+| --- | --- |
+| `Artifact` / `Flow.outputs` | Flow 声明预期产物；Artifact 记录实际产物。 |
+| `Artifact` / `Run.status.artifacts` | Run 只引用产物；Artifact 保存产物元数据。 |
+| `Artifact` / `Checkpoint` | Checkpoint 引用待审查产物；Artifact 记录产物本身和 review 状态。 |
+| `Artifact` / `Trust` | Artifact 可以被 Trust 描述来源和审查；Artifact 本身不表达信任等级。 |
+
+## 常见错误
+
+- 把大段 Markdown 或 diff 直接塞进 Run。应写成 Artifact 并用 `contentRef` 引用。
+- 只有最终产物才建 Artifact。中间 review notes、dry-run plan、导出的 Profile 都可以是 Artifact。
+- 把 `review.status` 当作 checkpoint 决策。产物审查状态不等于继续执行审批。
+- 缺少 hash 或 contentRef。可复盘产物应至少能定位内容，重要产物应有 hash。
+
+## 活字印刷位置
+
+Artifact 对应“印张”。印张是一次排版、润墨、校对、付印后的结果；Artifact 让 AI 工作留下可迁移、可审查、可复盘的事实。

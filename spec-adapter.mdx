@@ -1,47 +1,55 @@
 ---
 title: "Adapter 对象"
 sidebarTitle: "Adapter"
-description: "Adapter 是 Huoban 的外部能力标准化边界，把 SKILL.md、MCP tool、规则文件或本地工具来源转成兼容对象。"
+description: "Adapter 是 Huoban 的外部来源标准化边界，把 SKILL.md、MCP tool、规则文件或本地工具转成可编排对象。"
 ---
 
 # Adapter 对象
 
-`Adapter` 是异形活字转接件。它把外部 skill、MCP tool、规则文件或本地工具来源转换为 Huoban 可以理解的对象。
+`Adapter` 是 Huoban 的异形活字转接件：它承认外部生态已经存在，并把外部 skill、MCP tool、规则文件或本地工具来源补齐成 Huoban 可以理解的对象。
 
-Adapter 不是简单调用桥。它至少声明 `source`、`capabilities` 和 `sideEffects`；`mapping`、`checkpoint`、`trustRef` 和 `fallback` 只在可推断或已审查时补齐。
+规范页定义 Adapter 的字段形状和验证边界。为什么不是把所有外部文件直接当作 Skill，请读 [Adapter 模型](/adapter-model)。
 
-## 适配来源
+## 对象职责
 
-v1alpha1 支持的 `source.type`：
+Adapter 解决的问题是：外部能力有用，但它们通常缺少稳定 capability、输入输出、side effect、trust 和 mapping 边界。Adapter 给外部来源一个可审查入口。
 
-| source type | 来源 |
-| --- | --- |
-| `skillMd` | 外部或本地 `SKILL.md`。 |
-| `mcpTool` | MCP tool。 |
-| `claudeSkill` | Claude skill。 |
-| `codexSkill` | Codex skill。 |
-| `cursorRule` | Cursor Rules。 |
-| `harness` | 外部 harness 类来源。 |
-| `local` | 本地脚本、文件或工具来源。 |
+Adapter 负责描述：
 
-上下文-only 文件、团队规范和项目知识应进入 `Profile`。只有 capability-like 指令、工具流程、脚本或外部工具能力才通过 `Adapter` 表达。
+- 外部来源类型和位置。
+- 该来源能满足哪些 capability。
+- Huoban 输入输出与外部来源输入输出的路径映射。
+- 可确认的可能副作用。
+- 是否建议 checkpoint。
+- 关联 Trust。
+- 不兼容或失败时的 fallback 信息。
 
-## spec 字段
+Adapter 不负责：
+
+- 存储项目上下文；上下文-only 文件应进入 `Profile`。
+- 证明来源可信；这属于 `Trust`。
+- 执行权限控制；这属于 `Policy`。
+- 替代原生 Skill；它是外部来源的标准化边界。
+
+## v1alpha1 字段
 
 | 字段 | 要求 | 说明 |
 | --- | --- | --- |
-| `source` | 必填 | 外部来源类型和位置。 |
-| `capabilities` | 必填 | 该 Adapter 声明满足的能力。 |
-| `mapping.inputs` | 可选 | Huoban 输入到外部输入的字符串路径映射。 |
-| `mapping.outputs` | 可选 | 外部输出到 Huoban artifact 的字符串路径映射。 |
-| `sideEffects.declared` | 必填 | 可确认的可能副作用；无法判断或未声明的副作用由 Policy 的 `unknownSideEffect` 默认策略处理。 |
-| `checkpoint` | 可选 | 外部能力是否建议进入校对边界。 |
-| `trustRef` | 可选 | 信任信息引用。 |
-| `fallback` | 可选 | 失败或不兼容时的提示。 |
+| `spec.source` | 必填 | 外部来源。 |
+| `spec.source.type` | 必填 | `skillMd`、`mcpTool`、`claudeSkill`、`codexSkill`、`cursorRule`、`harness`、`local`。 |
+| `spec.source.path` | 可选 | 本地路径。 |
+| `spec.source.url` | 可选 | 外部 URL。 |
+| `spec.capabilities` | 必填，至少 1 个，唯一 | Adapter 声明满足的 capability。 |
+| `spec.mapping.inputs` | 可选 | Huoban 输入到外部输入的字符串路径映射。 |
+| `spec.mapping.outputs` | 可选 | 外部输出到 Huoban artifact 的字符串路径映射。 |
+| `spec.sideEffects` | 必填 | 副作用声明对象。 |
+| `spec.checkpoint` | 可选，开放结构 | 是否建议校对。 |
+| `spec.trustRef` | 可选 | Trust 引用。 |
+| `spec.fallback` | 可选，开放结构 | 失败或不兼容时的提示。 |
 
-`mapping.inputs` 和 `mapping.outputs` 当前只能保存字符串路径约定；不支持类型转换、模板、表达式或输出解析 DSL。`checkpoint` 和 `fallback` 是开放结构，不定义固定字段，也不是 runtime 控制流；示例里的 `recommended`、`reason` 或 `behavior` 只是约定。
+`mapping.inputs` 和 `mapping.outputs` 当前只是字符串路径映射，不是模板语言、类型转换 DSL 或输出解析 DSL。
 
-## 最小示例
+## 最小合法示例
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
@@ -57,7 +65,7 @@ spec:
     - huoban.dev/planning
   mapping:
     inputs:
-      prompt: user.idea
+      prompt: user.prompt
     outputs:
       review: artifact.decisionNotes
   sideEffects:
@@ -67,19 +75,47 @@ spec:
   checkpoint:
     recommended: true
   trustRef:
-    name: local-reviewed-source
+    name: local-reviewed-grill-me
 ```
 
-## status
+参考 example：`examples/adapters/grill-me-skill-md.yaml`。
 
-常见 conditions：
+## 验证规则
 
-- `AdapterImported`
-- `CapabilityMapped`
-- `SideEffectsInferred`
-- `ImportNeedsReview`
-- `TrustResolved`
+validator 至少应检查：
 
-## 设计约束
+- `kind` 必须是 `Adapter`。
+- `source.type` 必须是 v1alpha1 枚举值。
+- `capabilities` 至少包含一个合法 capability，且不能重复。
+- `sideEffects.declared` 必须存在。
+- `mapping.inputs` 和 `mapping.outputs` 的值必须是字符串。
+- `trustRef` 如果存在，应能解析到 `Trust` 或写入 unresolved condition。
 
-导入 `SKILL.md` 时，默认生成 Adapter，而不是直接生成 trusted Skill。只有经过 review、补齐 side effects 和 trust 信息后，才能提升为原生 Skill 或受信 Adapter。
+## 导入判断
+
+导入外部文件时，建议按这个顺序判断：
+
+1. 文件主要描述项目上下文、团队规则、命令和领域语言：生成 `Profile`。
+2. 文件主要描述可调用能力、工具流程、skill 行为或外部接口：生成 `Adapter`。
+3. 无法判断时：生成 Adapter 或 Profile 的 draft，并写入 `ImportNeedsReview`。
+4. 经过 review、补齐 side effects 和 trust 后，才考虑提升为原生 `Skill`。
+
+## 与相邻对象的边界
+
+| 容易混淆 | 边界 |
+| --- | --- |
+| `Adapter` / `Skill` | Adapter 标准化外部来源；Skill 是原生能力对象。 |
+| `Adapter` / `Profile` | Adapter 面向能力；Profile 面向上下文。 |
+| `Adapter` / `Trust` | Adapter 描述来源如何映射；Trust 描述来源是否被审查和信任。 |
+| `Adapter` / `Policy` | Adapter 声明副作用；Policy 控制副作用。 |
+
+## 常见错误
+
+- 把 AGENTS.md 一律导入 Adapter。上下文-only 文件应导入 Profile。
+- 不声明 `sideEffects`。无法判断也要通过 Policy 的 unknownSideEffect 保守处理。
+- 把 mapping 写成复杂程序。v1alpha1 只承诺字符串路径映射。
+- 认为 Adapter 存在就代表可信。外部来源默认需要 Trust 和 review。
+
+## 活字印刷位置
+
+Adapter 对应“异形活字转接件”。外部活字可以进入版盘，但必须先补齐规格，才能被同一套 Flow、Policy、Run 和 Trust 体系处理。
