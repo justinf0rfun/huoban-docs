@@ -20,7 +20,7 @@ description: "Huoban 示例集合：从现有 AI 上下文和 skill 出发，理
   </Card>
 
   <Card title="SKILL.md Adapter" type="tip" icon="plug" href="/example-skill-md-adapter">
-    把工具生态里的 SKILL.md 标准化为 Adapter，并通过 Trust 和 Policy 管住边界。
+    展示手写 Adapter 如何描述外部 SKILL.md 来源，并通过 Trust 和 Policy 管住边界。
   </Card>
 </CardGroup>
 
@@ -30,7 +30,7 @@ description: "Huoban 示例集合：从现有 AI 上下文和 skill 出发，理
 | --- | --- | --- | --- |
 | 迁移类 | [AGENTS.md Profile](/example-import-agents-profile) | 把已有项目上下文从 Markdown 迁移为可审查 Profile。 | `Profile`、`Policy` |
 | 编排类 | [idea-to-spec-review](/example-idea-to-spec-review) | 把一次 AI 工作拆成 capability-first Flow 和可复盘 Run。 | `Skill`、`Adapter`、`Profile`、`Policy`、`Flow`、`Run`、`Checkpoint`、`Artifact` |
-| 适配类 | [SKILL.md Adapter](/example-skill-md-adapter) | 把已有工具 skill 接入 Huoban，但不直接把它当作可信 Skill。 | `Adapter`、`Trust`、`Policy` |
+| 适配类 | [SKILL.md Adapter](/example-skill-md-adapter) | 用手写 Adapter 描述已有工具 skill，但不直接把它当作可信 Skill。 | `Adapter`、`Trust`、`Policy` |
 
 ## 推荐阅读顺序
 
@@ -57,7 +57,7 @@ description: "Huoban 示例集合：从现有 AI 上下文和 skill 出发，理
 | `examples/import/AGENTS.md` | 原始项目上下文输入。 |
 | `examples/generated/agents-profile.yaml` | 由 AGENTS.md 导入生成的 Profile。 |
 | `examples/derived/agents-risk-policy.yaml` | 由 Profile risk layer 派生的 Policy。 |
-| `examples/adapters/grill-me-skill-md.yaml` | 从 SKILL.md 来源导入的 Adapter。 |
+| `examples/adapters/grill-me-skill-md.yaml` | 手写 Adapter，描述一个外部 SKILL.md 来源。 |
 | `examples/trust/local-reviewed-grill-me.yaml` | Adapter 来源的 Trust 记录。 |
 | `examples/skills/design-review.yaml` | 原生 Skill 示例。 |
 | `examples/skills/spec-outline-writer.yaml` | 第二个原生 Skill 示例。 |
@@ -70,23 +70,54 @@ description: "Huoban 示例集合：从现有 AI 上下文和 skill 出发，理
 | `examples/artifacts/review-notes.yaml` | Run 产出的 review notes Artifact。 |
 | `examples/registry/local-registry.yaml` | 本地 example registry。 |
 
-## 验证路径
+## 复现和验证路径
 
 在 source repo 中运行：
 
 ```bash
+npm run import:profile
+npm run derive:policy
+npm run export:agents
+npm run print:dry-run
 npm run validate
 npm run explain
-npm run print:dry-run
+npm run check:generated
+```
+
+完整检查可以直接运行：
+
+```bash
+npm test
 ```
 
 预期含义：
 
 | 命令 | 验证什么 |
 | --- | --- |
+| `npm run import:profile` | 从 `examples/import/AGENTS.md` 重新生成 `examples/generated/agents-profile.yaml`。 |
+| `npm run derive:policy` | 从 Profile risk layer 重新生成 `examples/derived/agents-risk-policy.yaml`。 |
+| `npm run export:agents` | 从 Profile 重新导出 `examples/export/AGENTS.md`。 |
+| `npm run print:dry-run` | 从 Flow 重新生成不执行 agent 工作的 dry-run Run。 |
 | `npm run validate` | 所有 YAML 是否符合 `schemas/v1alpha1/`。 |
 | `npm run explain` | workspace 是否能被解释成对象族、版式、锁版执行和信任边界。 |
-| `npm run print:dry-run` | Flow 是否能生成不执行 agent 工作的 dry-run Run。 |
+| `npm run check:generated` | 生成文件是否与已提交文件一致，避免 generated/derived/export 产物过期。 |
+| `npm test` | 按项目定义串起生成、验证、解释和 deterministic check。 |
+
+`SKILL.md Adapter` 当前没有 import CLI；它验证的是已存在的 Adapter YAML 能被 schema 校验和 explain 解释。
+
+## 对象链接矩阵
+
+| 对象 | 模型 | 规范 |
+| --- | --- | --- |
+| `Profile` | [Profile 模型](/profile-model) | [Profile 规范](/spec-profile) |
+| `Adapter` | [Adapter 模型](/adapter-model) | [Adapter 规范](/spec-adapter) |
+| `Skill` | [对象模型](/object-model) | [Skill 规范](/spec-skill) |
+| `Policy` | [Policy 模型](/policy-model) | [Policy 规范](/spec-policy) |
+| `Flow` | [Flow 模型](/flow-model) | [Flow 规范](/spec-flow) |
+| `Run` | [Run 模型](/run-model) | [Run 规范](/spec-run) |
+| `Checkpoint` | [Checkpoint 模型](/checkpoint-model) | [Checkpoint 规范](/spec-checkpoint) |
+| `Artifact` | [Artifact 模型](/artifact-model) | [Artifact 规范](/spec-artifact) |
+| `Trust` | [信任模型](/trust-model) | [Trust 规范](/spec-trust) |
 
 ## 对象组合原则
 

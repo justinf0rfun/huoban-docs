@@ -142,7 +142,7 @@ status:
 | `spec.layers[].content` | 保留原文，避免结构化推断丢失语义。 |
 | `spec.layers[].data` | 提供 agent 和 tooling 可读取的结构化线索。 |
 | `spec.policyRefs` | 本示例没有直接写入；风险规则先派生成独立 Policy，再由 Flow 或 Run 引用。 |
-| `status.conditions[].ImportNeedsReview` | 明确告诉读者：导入结果包含推断，需要 review。 |
+| `status.conditions[] where type == "ImportNeedsReview"` | 明确告诉读者：导入结果包含推断，需要 review。 |
 
 ## explain 应该看什么
 
@@ -165,7 +165,9 @@ Profile/agents-profile
 
 这个页面本身不生成 Run。它提供的是 `Profile/agents-profile` 这种可润墨对象。
 
-当某个 Flow 或 Run 引用这个 Profile 时，`print:dry-run` 应把 Profile 引用和有效内容 hash 锁进 `Run.spec.snapshot`。这时 Profile 不再只是 Markdown 背景材料，而是一次 AI 工作的可追溯上下文来源。
+当某个 Flow 或 Run 引用这个 Profile 时，当前 `print:dry-run` 会把 `profileRefs` 写入 Run，并把 Profile 引用集合纳入 `Run.spec.snapshot.profileSpecHash`。它没有读取并 hash effective Profile 内容。
+
+完整 effective Profile content hash 是 workspace validation 或后续实现目标。当前事实是：dry-run 能记录“使用了哪些 Profile 引用”，但不能单独证明这些 Profile 的内容已经被冻结。
 
 ## 派生 Policy
 
@@ -194,7 +196,7 @@ spec:
 
 - **可排版**：导入后的 Profile 可以被 Flow 或 Run 引用，不再靠人工粘贴上下文。
 - **可润墨**：style、commands、risk 等 layer 改变 agent 的判断环境，但不改变 Skill 本体。
-- **可印刷**：Run snapshot 可以记录使用了哪套 Profile，审查时能复盘上下文来源。
+- **可印刷**：Run snapshot 当前可以记录使用了哪组 Profile 引用；完整上下文内容冻结属于后续实现目标。
 
 ## 常见修改方式
 
