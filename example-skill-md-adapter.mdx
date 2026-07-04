@@ -198,6 +198,26 @@ Adapter/grill-me-skill-md
 
 这说明导入结果已经具备 capability、来源、副作用和 trust 引用。
 
+## print / dry-run 如何使用它
+
+这个页面本身不直接生成 Run。它提供的是 `Adapter/grill-me-skill-md`，供 Run binding 使用。
+
+在 `idea-to-spec-review` 中，`print:dry-run` 会把 Flow 的 `primary-review` role 绑定到这个 Adapter：
+
+```yaml
+bindings:
+  primary-review:
+    adapterRef: grill-me-skill-md
+```
+
+生成的 dry-run Run 不执行这个 Adapter，但会把 binding 写入锁定快照。审查者因此能看到：这次计划使用的是外部 `SKILL.md` 来源，而不是原生 Huoban Skill。
+
+## 在三句话中的位置
+
+- **可排版**：Adapter 声明外部来源能满足哪些 capability，让 Flow 可以按 capability 排版。
+- **可润墨**：Adapter 可以读取 `profile.effectiveContent`，但不把 Profile 内容混进外部 skill。
+- **可印刷**：Run binding 和 Trust 记录让一次使用外部 skill 的计划可审查、可复盘。
+
 ## 常见修改方式
 
 | 你要改什么 | 应该改哪里 |

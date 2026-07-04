@@ -141,6 +141,7 @@ status:
 | `spec.layers[].name` | 把 Markdown 章节拆成稳定上下文层。 |
 | `spec.layers[].content` | 保留原文，避免结构化推断丢失语义。 |
 | `spec.layers[].data` | 提供 agent 和 tooling 可读取的结构化线索。 |
+| `spec.policyRefs` | 本示例没有直接写入；风险规则先派生成独立 Policy，再由 Flow 或 Run 引用。 |
 | `status.conditions[].ImportNeedsReview` | 明确告诉读者：导入结果包含推断，需要 review。 |
 
 ## explain 应该看什么
@@ -159,6 +160,12 @@ Profile/agents-profile
 ```
 
 这说明导入没有只复制 Markdown，而是保留了三层上下文，并显式标出结构化推断。
+
+## print / dry-run 如何使用它
+
+这个页面本身不生成 Run。它提供的是 `Profile/agents-profile` 这种可润墨对象。
+
+当某个 Flow 或 Run 引用这个 Profile 时，`print:dry-run` 应把 Profile 引用和有效内容 hash 锁进 `Run.spec.snapshot`。这时 Profile 不再只是 Markdown 背景材料，而是一次 AI 工作的可追溯上下文来源。
 
 ## 派生 Policy
 
@@ -182,6 +189,12 @@ spec:
 ```
 
 完整文件：`examples/derived/agents-risk-policy.yaml`。
+
+## 在三句话中的位置
+
+- **可排版**：导入后的 Profile 可以被 Flow 或 Run 引用，不再靠人工粘贴上下文。
+- **可润墨**：style、commands、risk 等 layer 改变 agent 的判断环境，但不改变 Skill 本体。
+- **可印刷**：Run snapshot 可以记录使用了哪套 Profile，审查时能复盘上下文来源。
 
 ## 常见修改方式
 
