@@ -48,6 +48,17 @@ Artifact 不负责：
 
 v1alpha1 不规定产物类型枚举，因为不同实现会产生不同 artifact type。跨工具互操作应优先使用稳定、可解释的 type 字符串。
 
+`contentRef` 的 schema 只强制 `type`，但可复盘实现应提供可定位信息：
+
+| `contentRef.type` | 推荐定位字段 | 当前边界 |
+| --- | --- | --- |
+| `file` | `path` | 指向 workspace 内或约定根目录下的文件。 |
+| `gitBlob` | `path`，并由实现补充 revision 语义 | v1alpha1 不定义完整 git object 引用格式。 |
+| `url` | `url` | 指向外部可访问内容。 |
+| `object` | `path` 或实现自定义对象引用 | 跨实现引用格式尚未承诺。 |
+
+缺少可定位信息的 Artifact 可以通过 schema，但不应被视为可复盘产物。
+
 ## 最小合法示例
 
 ```yaml
@@ -77,6 +88,8 @@ validator 至少应检查：
 - `kind` 必须是 `Artifact`。
 - `spec.type` 必须存在。
 - `contentRef.type` 如果存在，只能是 `file`、`url`、`gitBlob`、`object`。
+- `contentRef.type` 为 `file` 或 `gitBlob` 时，workspace validator 应要求 `path`。
+- `contentRef.type` 为 `url` 时，workspace validator 应要求 `url`。
 - `review.status` 如果存在，只能是 `pending`、`approved`、`rejected`、`changesRequested`。
 - 如果 `runRef` 和 `stage` 存在，workspace validator 应确认 stage 能解析到对应 Run 的 Flow。
 - 如果 `hash` 存在，validator 可以检查格式，但 v1alpha1 不强制 hash 算法。

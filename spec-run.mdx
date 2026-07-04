@@ -39,9 +39,9 @@ Run 不负责：
 | `spec.profileRefs` | 可选 | 本次 Run 追加或覆盖的 Profile 引用。 |
 | `spec.policyRefs` | 可选 | 本次 Run 使用的 Policy 引用。 |
 | `spec.mode` | 可选 | `explain`、`dryRun` 或 `execute`。 |
-| `spec.bindings` | 可选 | role 到 `skillRef` 或 `adapterRef` 的映射。 |
+| `spec.bindings` | 可选 | role 到 `skillRef`、`adapterRef` 或二者之一的映射。 |
 | `spec.snapshot.flowSpecHash` | 可选 | Flow spec hash。 |
-| `spec.snapshot.profileSpecHash` | 可选 | effective Profile hash。 |
+| `spec.snapshot.profileSpecHash` | 可选 | Profile 引用或 effective Profile 的 hash，具体算法由实现声明。 |
 | `spec.snapshot.skillBindingHash` | 可选 | binding hash。 |
 | `status.phase` | 可选 | runtime 观察到的阶段。 |
 | `status.currentStage` | 可选 | 当前 stage id。 |
@@ -49,6 +49,8 @@ Run 不负责：
 | `status.artifacts` | 可选 | 实际产物引用。 |
 
 `bindings` 的 key 通常对应 `Flow.stages[].requires.role`。binding value 必须至少包含 `skillRef` 或 `adapterRef`，且不能包含其他字段。
+
+当前 schema 允许同一个 binding 同时写 `skillRef` 和 `adapterRef`。为了互操作，推荐一个 binding 只写一种 ref。当前 CLI explain 会优先显示 `skillRef`，但这不是稳定标准语义；未来 workspace validator 可以把双写视为歧义并报错。
 
 ## 最小合法示例
 
@@ -88,6 +90,7 @@ validator 至少应检查：
 - `spec.flowRef.name` 必须存在。
 - `mode` 如果存在，只能是 `explain`、`dryRun` 或 `execute`。
 - 每个 binding 必须至少有 `skillRef` 或 `adapterRef`。
+- 推荐每个 binding 只写一种 ref；同时写两种 ref 时，workspace validator 应写入 ambiguity condition。
 - binding key 应能对应 Flow stage role；如果不能，写入 condition。
 - `status.observedSideEffects[].type` 只能使用标准 side effect。
 - `status.artifacts[]` 必须是 Artifact 引用形状。

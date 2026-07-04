@@ -80,14 +80,14 @@ validator 至少应检查：
 - `sideEffects` 只能使用标准 side effect 枚举。
 - `defaults.unknownSideEffect` 如果存在，只能是 `allow`、`deny`、`requireApproval`。
 
-## 规则解释建议
+## 规则解释边界
 
 v1alpha1 不强制 rule ordering，但实现者应保持解释结果稳定。推荐：
 
 - `deny` 优先于 `requireApproval`。
 - `requireApproval` 优先于 `allow`。
-- 未匹配任何规则时，使用 `defaults.unknownSideEffect`。
-- 如果没有默认值，runtime 应保守处理，并写入 condition。
+- `defaults.unknownSideEffect` 只处理未知或未声明 side effect，不是所有未匹配规则的通用默认值。
+- capability 或 trust level 未匹配任何规则时，v1alpha1 不定义通用 allow/deny 默认；runtime 应保守处理，并写入 condition。
 
 这些是解释建议，不是新字段。
 

@@ -38,16 +38,18 @@ Flow 不负责：
 | `spec.policyRefs` | 可选 | Flow 默认使用的 Policy 引用。 |
 | `spec.stages` | 必填，至少 1 个 | 阶段数组。 |
 | `spec.stages[].id` | 必填 | stage 稳定 id。 |
-| `spec.stages[].requires` | 与 `uses` 二选一 | capability-first 的能力需求。 |
+| `spec.stages[].requires` | 与 `uses` 至少一个 | capability-first 的能力需求。 |
 | `spec.stages[].requires.capability` | `requires` 内必填 | 需要的 capability。 |
 | `spec.stages[].requires.role` | 可选 | 在 Run binding 中使用的角色名。 |
-| `spec.stages[].uses` | 与 `requires` 二选一 | 直接引用具体 Skill 或 Adapter 的 shortcut。 |
+| `spec.stages[].uses` | 与 `requires` 至少一个 | 直接引用具体 Skill 或 Adapter 的 shortcut。 |
 | `spec.stages[].inputs` | 可选 | stage 输入来源。 |
 | `spec.stages[].outputs` | 可选 | stage 预期产物声明。 |
 | `spec.checkpoints` | 可选 | Flow 级 checkpoint 声明。 |
 | `status` | 可选 | validation、resolution 或 planning 状态。 |
 
-每个 stage 必须至少有 `requires` 或 `uses`。推荐优先使用 `requires.capability`，因为它允许不同 runner 在 `Run.bindings` 中选择具体 Skill 或 Adapter。
+每个 stage 必须至少有 `requires` 或 `uses`。当前 schema 使用 `anyOf`，因此二者同时出现也能通过 schema。为了互操作，推荐只写 `requires.capability`，让不同 runner 在 `Run.bindings` 中选择具体 Skill 或 Adapter。
+
+如果同时写 `requires` 和 `uses`，v1alpha1 schema 不定义跨实现优先级。实现可以把 `uses` 视为直接绑定 shortcut，也可以在 workspace validation 中报告歧义。公开示例应避免双写。
 
 ## 最小合法示例
 
@@ -88,12 +90,15 @@ validator 至少应检查：
 - `kind` 必须是 `Flow`。
 - `spec.stages` 至少包含一个 stage。
 - 每个 stage 必须有 `id`。
-- 每个 stage 必须有 `requires` 或 `uses`。
+- 每个 stage 必须至少有 `requires` 或 `uses`。
 - `requires.capability` 必须符合 capability 格式。
+- `requires.role` 如果存在，推荐在同一 Flow 内唯一，因为它会作为 `Run.bindings` 的 key。
 - `inputs[].name` 和 `inputs[].from` 必须同时存在。
 - `outputs[].name` 和 `outputs[].artifactType` 必须同时存在。
 - checkpoint 必须声明 `type` 和 `required`。
 - `checkpoints[].after` 或 `before` 应能解析到 stage id；schema 不强制，但 workspace validator 应检查。
+
+`requires.role` 缺失时，不要假设所有实现都会自动使用 stage id 作为 binding key。需要稳定 runner binding 的 Flow 应显式写 role。
 
 ## 与相邻对象的边界
 

@@ -58,23 +58,41 @@ Huoban v1alpha1 的对象族是最小开放编排语言：
 
 ## 验证路径
 
-实现者应该按这个顺序验证对象：
+验证分三层，不要把当前 CLI 已实现能力和长期互操作目标混在一起。
+
+### Schema validation
+
+`npm run validate` 当前做的是 schema validation：
 
 1. 解析 YAML。
 2. 根据 `apiVersion` 和 `kind` 选择 schema。
 3. 校验资源外壳：`apiVersion`、`kind`、`metadata`、`spec`。
 4. 校验对象 schema：必填字段、枚举、数组、引用形状、`additionalProperties`。
-5. 校验对象关系：例如 `Flow.profileRefs` 是否能解析到 `Profile`，`Run.bindings` 是否能绑定 stage role。
-6. 校验执行边界：例如 `Skill.sideEffects`、`Adapter.sideEffects` 是否被 `Policy` 覆盖。
-7. 输出 conditions，不要静默修正对象。
 
-当前仓库的验证命令是：
+这一步不承诺完整对象关系校验、Policy 覆盖校验或 runner binding 校验。
+
+### Current CLI coverage
+
+当前仓库的可运行命令是：
 
 ```bash
 npm run validate
 npm run explain
 npm run print:dry-run
 ```
+
+`npm run explain` 会做 workspace 级解释，并包含当前 examples 的引用检查；`npm run print:dry-run` 会从 Flow 生成 dry-run Run。它们是当前 tooling 覆盖，不等同于完整 conformance suite。
+
+### Workspace validation target
+
+完整实现应继续检查：
+
+1. 对象关系：例如 `Flow.profileRefs` 是否能解析到 `Profile`，`Run.bindings` 是否能绑定 stage role。
+2. 执行边界：例如 `Skill.sideEffects`、`Adapter.sideEffects` 是否被 `Policy` 覆盖。
+3. 产物链路：例如 `Checkpoint.artifactRefs` 是否能解析到本次 Run 的 `Artifact`。
+4. conditions 输出：无法解析或存在歧义时写入 condition，不要静默修正对象。
+
+这些属于 workspace validation target；v1alpha1 schema 本身不全部强制。
 
 文档站点自身应通过：
 

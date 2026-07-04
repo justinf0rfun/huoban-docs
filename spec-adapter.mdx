@@ -49,6 +49,15 @@ Adapter 不负责：
 
 `mapping.inputs` 和 `mapping.outputs` 当前只是字符串路径映射，不是模板语言、类型转换 DSL 或输出解析 DSL。
 
+`source.path` 和 `source.url` 在 schema 中是可选字段，但可复查 Adapter 应能定位来源：
+
+| `source.type` | 推荐定位方式 | 当前边界 |
+| --- | --- | --- |
+| `skillMd`、`claudeSkill`、`codexSkill`、`cursorRule`、`local` | `path` | 本地或 workspace 内来源。 |
+| `mcpTool`、`harness` | `url` 或实现定义的 tool id/path | v1alpha1 不定义 tool discovery 协议。 |
+
+缺少 `path` 或 `url` 的 Adapter 可以作为 draft，但不应进入可信 registry；应通过 condition 标记来源不可复查。
+
 ## 最小合法示例
 
 ```yaml
@@ -86,6 +95,7 @@ validator 至少应检查：
 
 - `kind` 必须是 `Adapter`。
 - `source.type` 必须是 v1alpha1 枚举值。
+- 可复查 Adapter 应有 `source.path` 或 `source.url`；缺少定位信息时应写入 condition。
 - `capabilities` 至少包含一个合法 capability，且不能重复。
 - `sideEffects.declared` 必须存在。
 - `mapping.inputs` 和 `mapping.outputs` 的值必须是字符串。
