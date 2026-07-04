@@ -35,7 +35,8 @@
           "design-philosophy",
           "object-model",
           "profile-model",
-          "flow-model"
+          "flow-model",
+          "run-model"
         ]
       },
       {

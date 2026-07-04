@@ -1,0 +1,221 @@
+---
+title: "Run 模型"
+sidebarTitle: "Run 模型"
+description: "Run 是 Huoban 的锁版印刷：记录一次 AI 工作的执行视图、binding、mode、snapshot、状态和产物引用。"
+---
+
+`Run` 是 Huoban 的锁版印刷：一次 AI 工作的锁定执行视图与审查记录。
+
+它不是 runner，也不是执行器本身。`Run` 记录这一次工作基于哪个 `Flow`，使用哪些 `Profile` / `Policy`，把哪些 role 绑定到具体 `Skill` 或 `Adapter`，处于什么 mode，并在 `status` 中留下当前状态、副作用和产物引用。
+
+本页属于核心概念，解释 `Run` 的设计边界和使用模型；字段级定义、必填项和 schema 约束见 [Run 规范](/spec-run)。
+
+<CardGroup cols={2}>
+  <Card title="锁定执行视图" icon="print" type="tip" color="#16A34A">
+    `Run` 锁定一次工作使用的 Flow、Profile、Policy refs、bindings 和 mode，让复盘不被后续修改污染。
+  </Card>
+  <Card title="区分 spec / status" icon="shield-check" type="tip" color="#16A34A">
+    `spec` 声明本次计划使用什么，`status` 记录系统实际观察到什么。
+  </Card>
+  <Card title="绑定具体实现" icon="plug" type="tip" color="#16A34A">
+    `bindings` 把 Flow 中的 role / capability 解析为本次使用的 Skill 或 Adapter。
+  </Card>
+  <Card title="记录副作用与产物引用" icon="file-code" type="tip" color="#16A34A">
+    `Run` 记录 observed side effects 和 artifact refs，但不保存完整日志或产物正文。
+  </Card>
+</CardGroup>
+
+## Run 不是 runner
+
+`Run` 的第一性职责是记录一次执行视图，而不是执行工作。
+
+| 对象 | 职责 | 不承担 |
+| --- | --- | --- |
+| `Flow` | 定义一类 AI 工作的可复用结构。 | 不保存一次执行的状态和结果。 |
+| `Run` | 锁定一次具体执行使用的对象引用、binding、mode 和 snapshot，并记录当前状态。 | 不重新定义 Flow，不执行工具，不保存完整日志。 |
+| `Checkpoint` | 承载一次具体校对请求和决策边界。 | 不替代 Run 的状态索引。 |
+| `Artifact` | 保存产物类型、`contentRef`、hash、review、runRef 和 stage。 | 不替代 Run 的执行视图。 |
+| `Policy` | 定义副作用、审批和权限边界。 | 不替代 Run 的 observed side effects。 |
+
+一句话：`Flow` 定义版式，`Run` 记录这一次如何按该版式印刷。
+
+## spec 与 status
+
+`Run.spec` 是计划态声明，`Run.status` 是观察态事实。二者不能混用。
+
+| 位置 | 表达内容 |
+| --- | --- |
+| `spec.flowRef` | 这次 Run 基于哪个 Flow。 |
+| `spec.profileRefs` | 这次 Run 声明使用哪些上下文。 |
+| `spec.policyRefs` | 这次 Run 声明采用哪些行为边界。 |
+| `spec.bindings` | 这次把 role / capability 解析到哪些 Skill 或 Adapter。 |
+| `spec.mode` | 本次 Run 是 explain、dryRun 还是 execute。 |
+| `spec.snapshot` | 当前 v1alpha1 支持的 flow/profile/binding hash。 |
+| `status.phase` | 当前执行状态摘要。 |
+| `status.currentStage` | 当前 stage id。 |
+| `status.conditions` | 机器可读状态事件。 |
+| `status.observedSideEffects` | 实际观察到的副作用摘要。 |
+| `status.artifacts` | 实际产生的 Artifact 引用。 |
+
+不要把实际副作用写进 `spec`，不要把用户期望写进 `status`，不要把 artifact 正文塞进 `Run.status.artifacts`，也不要把 checkpoint 审批意见塞进 `Run.spec`。
+
+## Run mode
+
+`mode` 表达这次 Run 的执行意图和允许的副作用语义，不是 runner 类型。实际发生的副作用仍以 `status.observedSideEffects` 为准。
+
+| mode | 语义 | 副作用边界 |
+| --- | --- | --- |
+| `explain` | 解释对象、解析引用、说明计划。 | 不触发执行副作用。 |
+| `dryRun` | 生成可审查执行视图和 snapshot，解析 binding。 | 不执行会产生副作用的 agent / tool 动作。 |
+| `execute` | 在 Policy、Trust 和 Checkpoint 约束下执行实际动作。 | 发生副作用、产物或 checkpoint 时，应在对应状态字段中记录。 |
+
+`mode` 不能绕过 `Policy`。如果实际观察到的副作用超出声明，应进入 `status.observedSideEffects` 和 condition，例如 `UndeclaredSideEffectObserved`。
+
+## 最短验证路径
+
+`Run` 不只代表执行后的记录，也可以代表 explain / dry-run 产生的计划态执行视图。
+
+<Steps>
+  <Step title="声明 Flow">
+    `Flow` 声明 capability-first stage、默认 Profile、默认 Policy、checkpoint 和预期产物。
+  </Step>
+  <Step title="解析上下文与边界">
+    工具解析 `Profile`、`Policy`、`Skill`、`Adapter` 和 binding。
+  </Step>
+  <Step title="生成 dry-run Run">
+    `print --dry-run` 生成 `Run`，记录 mode、bindings 和当前 schema 支持的 snapshot hash。
+  </Step>
+  <Step title="审查后再执行">
+    人或系统根据 `Run`、`Checkpoint` 和 `Artifact` 决定是否进入 execute。
+  </Step>
+</Steps>
+
+早期实现不需要先做完整 runner。能稳定生成、解释和验证 `dryRun` Run，就已经能验证 Huoban 的核心对象链路。
+
+## Binding
+
+`spec.bindings` 把 Flow 中的 role / capability 解析为本次使用的具体 `Skill` 或 `Adapter`。
+
+```yaml
+# Run spec fragment
+bindings:
+  primary-review:
+    adapterRef: grill-me-skill-md
+  spec-writer:
+    skillRef: spec-outline-writer
+```
+
+边界是：
+
+- `Flow` 声明 capability 和 role。
+- `Run.spec.bindings` 锁定本次具体使用的 Skill / Adapter。
+- `Skill` / `Adapter` 声明能力、输入输出、副作用和信任信息。
+- `Run.spec.snapshot.skillBindingHash` 记录这次 binding 结果的 hash。
+
+当前 schema 只把 binding value 表达为 bare string refs，不强制 `skillRef` 与 `adapterRef` 互斥，也不强制校验 binding key 必须匹配 Flow stage role 或 capability。这些应由 explain / validator 暴露，而不是假装 schema 已经保证。
+
+## Snapshot
+
+`Run.snapshot` 是复盘锚点，不是完整归档包。
+
+当前 v1alpha1 只定义：
+
+| 字段 | 锁定内容 |
+| --- | --- |
+| `flowSpecHash` | 本次 Run 使用的 Flow spec。 |
+| `profileSpecHash` | 本次 Run 解析后的 Profile 相关 spec。 |
+| `skillBindingHash` | 本次 Run 的 Skill / Adapter binding。 |
+
+当前没有 `policySpecHash`，也没有 artifact content hash。Artifact 自己有 `hash`。当前只能通过 `policyRefs` 和可选 `generation` 标识 Policy；完整内容冻结需要未来 snapshot 字段或外部不可变存储保证。
+
+## Policy 与 side effects
+
+`Run` 记录本次声明使用哪些 `Policy`，并暴露实际观察到的副作用。
+
+```yaml
+# Run spec fragment
+policyRefs:
+  - name: safe-defaults
+```
+
+```yaml
+# Run status fragment
+observedSideEffects:
+  - type: writeFile
+    path: examples/generated/idea-to-spec-review-dry-run.yaml
+conditions:
+  - type: PolicyChecked
+    status: "True"
+    reason: SafeDefaultsApplied
+```
+
+除 `type` 外，`observedSideEffects` 的 payload 当前是观察细节，schema 不标准化其字段名。
+
+`Run.spec.policyRefs` 不等于完整 Policy 快照。当前 v1alpha1 不包含 `policySpecHash`，所以不能声称 Run 已经完整冻结 Policy 内容。
+
+## Checkpoint 与 Artifact
+
+`Run` 可以记录 checkpoint 状态摘要，但不替代 `Checkpoint` 对象。
+
+```yaml
+# Run status fragment
+phase: WaitingForCheckpoint
+currentStage: sharpen-idea
+conditions:
+  - type: CheckpointRequired
+    status: "True"
+    reason: ConfirmDirectionBeforeSpec
+artifacts:
+  - name: review-notes
+```
+
+边界是：
+
+- `Run.status.conditions` 记录状态摘要。
+- `Checkpoint` 承载具体校对请求、reason、stage、requiredActions 和 artifactRefs。
+- `Artifact` 保存产物元数据、`contentRef`、hash 和 review；正文或决策记录内容由 `contentRef` 指向。
+- `Run.status.artifacts` 只保存 Artifact 引用，不保存产物内容。
+
+当前 v1alpha1 的 `Run.status.conditions` 没有 `checkpointRef` 字段。实现可以通过 condition reason/message、命名约定或外部索引关联对应 Checkpoint，但不要把这个关联写成 schema 已经强制支持。
+
+## 结构示例
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Run
+metadata:
+  name: idea-to-spec-review-001
+spec:
+  flowRef:
+    name: idea-to-spec-review
+    generation: 1
+  profileRefs:
+    - name: huoban-open-source-project
+      generation: 1
+  policyRefs:
+    - name: safe-defaults
+  mode: dryRun
+  bindings:
+    primary-review:
+      adapterRef: grill-me-skill-md
+    spec-writer:
+      skillRef: spec-outline-writer
+  snapshot:
+    flowSpecHash: sha256:flow-placeholder
+    profileSpecHash: sha256:profile-placeholder
+    skillBindingHash: sha256:binding-placeholder
+status:
+  phase: WaitingForCheckpoint
+  currentStage: sharpen-idea
+  conditions:
+    - type: RunPlanned
+      status: "True"
+      reason: DryRunGenerated
+    - type: CheckpointRequired
+      status: "True"
+      reason: ConfirmDirectionBeforeSpec
+  artifacts:
+    - name: review-notes
+```
+
+这个示例展示的是 dry-run Run 的结构：它锁定对象引用、binding 和 snapshot，记录等待 checkpoint 的状态，并引用已产生或待审查的 Artifact。示例中的 hash 是占位值；可运行示例见 `examples/generated/idea-to-spec-review-dry-run.yaml`。它不是完整执行日志，也不是产物内容容器。
