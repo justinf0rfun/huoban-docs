@@ -1,18 +1,16 @@
 ---
 title: "规范参考总览"
 sidebarTitle: "总览"
-description: "Huoban v0.1 对象规范的阅读入口：版本、字段约定、对象分类和实现边界。"
+description: "Huoban v1alpha1 对象规范的入口：资源外壳、对象族、验证路径、阅读顺序和承诺边界。"
 ---
 
 # 规范参考总览
 
-Huoban 规范参考面向实现者、Adapter 作者、工具作者和标准贡献者。它回答的问题不是“Huoban 为什么存在”，而是“一个 Huoban 对象应该长什么样”。
+规范参考面向实现者、Adapter 作者、validator 作者、runner binding 作者和 registry tooling 作者。它不重复解释 Huoban 为什么存在；模型页解释设计原因，规范页定义对象形状、字段语义和验证边界。
 
-本节是 schema-level reference，聚焦字段、约束、对象格式和实现边界。第一次理解 Huoban 时，先读 [核心概念：对象模型](/object-model)，再回到这里查字段级定义。
+当前规范版本是 `huoban.dev/v1alpha1`。当 prose 与 JSON Schema 冲突时，以 schema 为准；当 schema 与 example 冲突时，先修 example 或 schema，再更新文档。
 
-当前参考版本为 `huoban.dev/v1alpha1`。
-
-## 资源对象格式
+## 资源外壳
 
 所有 Huoban 对象共享同一外壳：
 
@@ -27,86 +25,92 @@ status:
   ...
 ```
 
-字段约定：
-
-| 字段 | 要求 | 说明 |
+| 字段 | v1alpha1 要求 | 语义 |
 | --- | --- | --- |
-| `apiVersion` | 必填 | 对象 API 版本。v0.1 使用 `huoban.dev/v1alpha1`。 |
-| `kind` | 必填 | 对象类型，例如 `Skill`、`Profile`、`Flow`。 |
-| `metadata` | 必填 | 名称、标签、generation、来源和所有权。 |
-| `spec` | 必填 | 作者声明的期望状态。 |
-| `status` | 可选 | runtime 观察到的实际状态，只能由 runtime 写入。 |
+| `apiVersion` | 必填，固定为 `huoban.dev/v1alpha1` | 选择 schema 版本。 |
+| `kind` | 必填，固定为对象类型 | 选择对象 schema，例如 `Skill`、`Flow`、`Run`。 |
+| `metadata` | 必填 | 对象身份和元数据。 |
+| `metadata.name` | 必填 | 本地对象名，必须匹配 `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`。 |
+| `metadata.labels` | 可选 | 机器可读分类标签。 |
+| `metadata.annotations` | 可选 | 非核心元数据。 |
+| `metadata.generation` | 可选，整数且大于等于 1 | `spec` 发生语义变化时递增。 |
+| `spec` | 必填 | 作者声明的期望对象形状。 |
+| `status` | 可选 | runtime、validator 或 tooling 观察到的事实。 |
 
-## 对象分类
+`spec` 是声明，`status` 是事实。不要把运行日志、产物正文、临时 prompt 或工具输出塞进 `spec`；这些应该进入 `status.conditions`、`Run.status`、`Artifact` 或外部 `contentRef`。
 
-Core API Objects 是最小兼容 runtime 必须理解的对象：
+## 对象族
 
-- [`Skill`](/spec-skill)
-- [`Profile`](/spec-profile)
-- [`Flow`](/spec-flow)
-- [`Run`](/spec-run)
-- [`Checkpoint`](/spec-checkpoint)
+Huoban v1alpha1 的对象族是最小开放编排语言：
 
-Standard Extension Objects 在 v0.1 中定义，但 runtime 可以按兼容等级选择支持：
+| 对象 | 隐喻 | 解决的问题 | 规范 |
+| --- | --- | --- | --- |
+| `Skill` | 活字 | 声明可复用 capability、输入、输出和副作用。 | [Skill](/spec-skill) |
+| `Profile` | 墨方 | 把上下文变成可分层、可导入、可审查的对象。 | [Profile](/spec-profile) |
+| `Flow` | 版式 | 按 capability-first 排列阶段、校对点和产物。 | [Flow](/spec-flow) |
+| `Run` | 锁版印刷 | 锁定一次执行使用的 Flow、Profile、Policy 和 binding。 | [Run](/spec-run) |
+| `Checkpoint` | 校对 | 把继续、修改或拒绝变成显式决策对象。 | [Checkpoint](/spec-checkpoint) |
+| `Policy` | 印坊规矩 | 声明副作用、审批和权限边界。 | [Policy](/spec-policy) |
+| `Adapter` | 异形活字转接件 | 把外部 skill、MCP tool、规则文件或本地工具标准化。 | [Adapter](/spec-adapter) |
+| `Artifact` | 印张 | 记录一次 Run 产生的产物、引用、hash 和审查状态。 | [Artifact](/spec-artifact) |
+| `Registry` | 字架 | 组织、索引和发现 Huoban 对象来源。 | [Registry](/spec-registry) |
+| `Trust` | 来源信任记录 | 记录对象来源、审查、签名、sandbox 和信任等级。 | [Trust](/spec-trust) |
 
-- [`Policy`](/spec-policy)
-- [`Adapter`](/spec-adapter)
-- [`Artifact`](/spec-artifact)
-- [`Registry`](/spec-registry)
-- [`Trust`](/spec-trust)
+## 验证路径
 
-更多扩展对象，例如 `Eval`、`Context`、`Tool`、`Resource`、`Prompt`、`Runtime`、`Binding`，会在后续 reference 中继续拆页。
+实现者应该按这个顺序验证对象：
 
-## spec / status 边界
+1. 解析 YAML。
+2. 根据 `apiVersion` 和 `kind` 选择 schema。
+3. 校验资源外壳：`apiVersion`、`kind`、`metadata`、`spec`。
+4. 校验对象 schema：必填字段、枚举、数组、引用形状、`additionalProperties`。
+5. 校验对象关系：例如 `Flow.profileRefs` 是否能解析到 `Profile`，`Run.bindings` 是否能绑定 stage role。
+6. 校验执行边界：例如 `Skill.sideEffects`、`Adapter.sideEffects` 是否被 `Policy` 覆盖。
+7. 输出 conditions，不要静默修正对象。
 
-`spec` 是用户或上游系统声明的期望状态，`status` 是 runtime 观察到的事实。
+当前仓库的验证命令是：
 
-不要把运行日志、临时命令、artifact 内容和用户期望混在 `spec` 里。状态应该进入 `status.phase`、`status.conditions`、`status.observedSideEffects` 或专门的 `Artifact` 对象。
-
-## Conditions
-
-Huoban 使用 `conditions` 表达细粒度状态。一个 condition 至少应包含：
-
-```yaml
-type: FlowValidated
-status: "True"
-reason: SchemaValid
-message: "Flow passed schema validation."
-lastTransitionTime: "2026-06-23T12:00:00Z"
+```bash
+npm run validate
+npm run explain
+npm run print:dry-run
 ```
 
-推荐字段：
+文档站点自身应通过：
 
-| 字段 | 说明 |
-| --- | --- |
-| `type` | 条件类型，例如 `ProfileResolved`、`CheckpointRequired`。 |
-| `status` | `True`、`False` 或 `Unknown`。 |
-| `reason` | 稳定、机器可读的原因。 |
-| `message` | 面向人的解释。 |
-| `lastTransitionTime` | 状态变化时间。 |
-
-## generation
-
-对象 `spec` 发生语义变化时，`metadata.generation` 应递增。runtime 写入 `status.observedGeneration`，表示当前状态对应哪一代 spec。
-
-```yaml
-metadata:
-  generation: 3
-status:
-  observedGeneration: 2
+```bash
+npx mintlify validate
 ```
 
-如果二者不一致，说明 status 还没有追上最新 spec。
+## 阅读顺序
 
-## 实现建议
+如果你要实现 validator，从 [Skill](/spec-skill)、[Profile](/spec-profile)、[Policy](/spec-policy) 开始，再读 [Flow](/spec-flow)、[Run](/spec-run)、[Checkpoint](/spec-checkpoint)、[Artifact](/spec-artifact)。
 
-v0.1 实现不需要一次支持全部对象。推荐顺序：
+如果你要实现外部生态导入，从 [Adapter](/spec-adapter)、[Trust](/spec-trust)、[Registry](/spec-registry) 开始。
 
-1. 支持读取与校验 `apiVersion / kind / metadata / spec`。
-2. 支持 `Profile` import / export。
-3. 支持 `Flow` explain / dry-run。
-4. 支持 `Run` snapshot。
-5. 支持 `Policy` 与 side effects。
-6. 支持 `Adapter` 与外部生态迁移。
+如果你要实现 runner binding，先读 [Flow](/spec-flow) 和 [Run](/spec-run)，再读 [Policy](/spec-policy)、[Checkpoint](/spec-checkpoint) 和 [Artifact](/spec-artifact)。
 
-参见 [兼容等级](/conformance)。
+## v1alpha1 承诺
+
+v1alpha1 承诺的是对象边界和可验证字段，不承诺完整 runtime。
+
+<CardGroup cols={2}>
+  <Card title="已经承诺" icon="shield-check" type="tip" color="#16A34A">
+    资源外壳、10 个对象 kind、schema 字段、最小 examples、validate/explain/print dry-run 路径。
+  </Card>
+  <Card title="尚不承诺" icon="boxes" type="tip" color="#16A34A">
+    hosted registry、marketplace、完整 runner、visual builder、通用 eval DSL、跨组织分发策略。
+  </Card>
+</CardGroup>
+
+未出现在 `schemas/v1alpha1/*.schema.json` 中的字段，不属于 v1alpha1 承诺。文档可以讨论未来方向，但必须明确标为非 v1alpha1 承诺。
+
+## 常见实现错误
+
+| 错误 | 为什么不对 | 正确做法 |
+| --- | --- | --- |
+| 把 `Flow` 写成脚本 | Flow 声明版式，不绑定 runner 或 shell。 | 用 `Flow` 声明 capability、stage、checkpoint 和 artifact；执行绑定进入 `Run.bindings` 或 Adapter。 |
+| 把 AGENTS.md 直接当作可信 Skill | Markdown 指令没有稳定 capability、输出和副作用边界。 | 上下文导入为 `Profile`，能力类来源导入为 `Adapter` 并经过 review。 |
+| 把权限写进 Profile | Profile 改变判断标准，不控制副作用。 | 用 `Policy` 声明副作用、审批和权限边界。 |
+| 把产物正文塞进 Run | Run 是执行快照，不是内容仓库。 | 用 `Artifact.contentRef` 引用文件、URL、git blob 或对象。 |
+| 把 Trust 当作 allow/deny | Trust 描述来源和审查，不是执行授权。 | Trust 供 Policy 和 runtime 判断；执行边界仍由 `Policy` 声明。 |
