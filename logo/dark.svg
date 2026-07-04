@@ -1,32 +1,10 @@
-<svg width="70" height="28" viewBox="0 0 70 28" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title">
+<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title">
   <title id="title">Huoban</title>
-  <g id="mark" transform="translate(0 2)">
+  <g id="mark" transform="translate(2 2)">
     <rect x="0" y="0" width="24" height="24" rx="6" fill="#14532D"/>
     <rect x="4" y="4" width="7" height="7" rx="2" fill="#16A34A"/>
     <rect x="13" y="4" width="7" height="5" rx="2" fill="#22C55E"/>
     <rect x="4" y="13" width="5" height="7" rx="2" fill="#15803D"/>
     <rect x="11" y="13" width="9" height="7" rx="2" fill="#16A34A"/>
-  </g>
-  <g id="wordmark" transform="translate(32 10)">
-    <rect x="0" y="0" width="1" height="8" fill="#FFFFFF"/>
-    <rect x="4" y="0" width="1" height="8" fill="#FFFFFF"/>
-    <rect x="0" y="3" width="6" height="1" fill="#FFFFFF"/>
-    <rect x="7" y="1" width="1" height="6" fill="#FFFFFF"/>
-    <rect x="11" y="1" width="1" height="6" fill="#FFFFFF"/>
-    <rect x="7" y="5" width="5" height="1" fill="#FFFFFF"/>
-    <rect x="13" y="1" width="5" height="1" fill="#FFFFFF"/>
-    <rect x="13" y="5" width="5" height="1" fill="#FFFFFF"/>
-    <rect x="13" y="1" width="1" height="5" fill="#FFFFFF"/>
-    <rect x="17" y="1" width="1" height="5" fill="#FFFFFF"/>
-    <rect x="20" y="1" width="1" height="8" fill="#FFFFFF"/>
-    <rect x="20" y="5" width="4" height="1" fill="#FFFFFF"/>
-    <rect x="22" y="1" width="1" height="5" fill="#FFFFFF"/>
-    <rect x="25" y="4" width="1" height="4" fill="#FFFFFF"/>
-    <rect x="27" y="1" width="1" height="8" fill="#FFFFFF"/>
-    <rect x="27" y="4" width="4" height="1" fill="#FFFFFF"/>
-    <rect x="30" y="1" width="1" height="4" fill="#FFFFFF"/>
-    <rect x="32" y="1" width="1" height="8" fill="#FFFFFF"/>
-    <rect x="35" y="1" width="1" height="8" fill="#FFFFFF"/>
-    <rect x="32" y="4" width="4" height="1" fill="#FFFFFF"/>
   </g>
 </svg>
