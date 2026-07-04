@@ -33,7 +33,6 @@
         "icon": "boxes",
         "pages": [
           "design-philosophy",
-          "architecture",
           "object-model",
           "profile-model",
           "flow-model",
