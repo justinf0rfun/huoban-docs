@@ -55,7 +55,7 @@ spec:
 
 ## Digest 形状
 
-所有协议 digest 使用 `sha256:<64 位小写十六进制>`。对象 digest 使用 Huoban canonical JSON v1：对象 key 按 UTF-16 code unit 升序递归排列、数组顺序保持、按 ECMAScript `JSON.stringify` 语义序列化为 UTF-8，再计算 SHA-256。file-backed Artifact 直接哈希原始文件 bytes。
+所有协议 digest 使用 `sha256:<64 位小写十六进制>`。对象 digest 使用 Huoban canonical JSON v1：对象 key 按 UTF-16 code unit 升序递归排列、数组顺序保持、按 ECMAScript `JSON.stringify` 语义序列化为 UTF-8，再计算 SHA-256。file input 与 file-backed Artifact 直接哈希原始文件 bytes。
 
 ## 10 个顶层 kind
 
@@ -63,8 +63,8 @@ spec:
 | --- | --- | --- |
 | `Skill` | 声明原子 capability、输入输出、外部依赖与副作用。 | [Skill](/spec-skill) |
 | `Profile` | 声明分层上下文及其外部依赖。 | [Profile](/spec-profile) |
-| `Flow` | 声明 capability-first stage、checkpoint 和 lifecycle handler。 | [Flow](/spec-flow) |
-| `Run` | 锁定 Flow 引用、上下文、策略、实现绑定和快照。 | [Run](/spec-run) |
+| `Flow` | 声明入口输入、capability-first stage、checkpoint 和 lifecycle handler。 | [Flow](/spec-flow) |
+| `Run` | 锁定 Flow 引用、调用输入、上下文、策略、实现绑定和快照。 | [Run](/spec-run) |
 | `Checkpoint` | 记录一次 Run 的具体决策边界。 | [Checkpoint](/spec-checkpoint) |
 | `Policy` | 声明副作用、审批和权限规则。 | [Policy](/spec-policy) |
 | `Adapter` | 标准化导入格式或外部能力。 | [Adapter](/spec-adapter) |
@@ -74,10 +74,12 @@ spec:
 
 ## 共享执行契约
 
-以下结构有独立 fragment schema，但不是顶层 kind：
+以下结构嵌入顶层对象或 Artifact 内容，但不是顶层 kind：
 
 | 结构 | 所属位置 | 规范 |
 | --- | --- | --- |
+| Flow entry input | `Flow.spec.inputs[]` | [Flow](/spec-flow#顶层字段) |
+| Run input binding | `Run.spec.inputBindings` | [Run](/spec-run#input-binding) |
 | `Requirement` | `Skill.spec.requirements[]`、`Profile.spec.requirements[]`、`Adapter.spec.requirements[]` | [Requirement](/spec-requirement) |
 | Preflight Report | `Artifact.spec.contentRef.data`，且 Artifact type 为 `huoban.dev/preflight-report` | [Preflight](/spec-preflight) |
 | Lifecycle Handler | `Flow.spec.lifecycle[]` | [Lifecycle Handler](/spec-lifecycle-handler) |
@@ -90,9 +92,9 @@ spec:
 | 路径 | 已实现 | 未实现 |
 | --- | --- | --- |
 | `huoban validate` | 解析 YAML/JSON；按 `apiVersion`/`kind` 校验顶层对象，也可校验 Lifecycle Event Envelope fragment；file-backed Artifact 与 Preflight Report 额外验证内容 hash。 | 不解析对象引用，不检查 capability binding，不执行 Policy。 |
-| `huoban explain` | 输出对象或 workspace 摘要，并报告一部分缺失引用。 | 不先做 schema validation，也不是完整关系校验。 |
-| `huoban print --dry-run` | 从一个 Flow 生成 `mode: dryRun` 的 Run 计划与四类 snapshot hash。 | 不执行 stage，不做 Preflight，不调用外部能力。 |
-| `huoban preflight` | 先校验 Run/workspace 对象，再检查可达引用、binding、Requirement 和当前环境就绪性。 | 不执行 Flow，不调用 MCP tool，不评估 Policy 规则或 Trust 授权。 |
+| `huoban explain` | 输出对象或 workspace 摘要，显示入口/绑定元数据，并报告一部分缺失引用；inline input 值不输出。 | 不先做 schema validation，也不是完整关系校验。 |
+| `huoban print --dry-run` | 验证 `--input`，从 Flow 生成 `mode: dryRun` 的 Run 计划、`inputBindings` 与五类 snapshot hash。 | 不执行 stage，不做 Preflight，不调用外部能力。 |
+| `huoban preflight` | 先校验 Run/workspace 对象，再检查可达引用、binding、动态输入内容、Requirement 和当前环境就绪性。 | 不执行 Flow，不调用 MCP tool，不评估 Policy 规则或 Trust 授权。 |
 | import/export/derive | Markdown 到 Profile、Profile 到 `AGENTS.md`、Profile risk layer 到 Policy。 | 生成结果不能跳过 review；这些命令不是通用转换 runtime。 |
 
 完整命令和可验证范围见 [兼容与验证](/conformance)。
@@ -125,6 +127,7 @@ npm run preflight
 - 发明 schema 中不存在的字段，或把开放状态字段误写进 `spec`。
 - 把 Requirement、Preflight Report 或 Lifecycle Handler 增加为第 11 个 kind。
 - 认为引用形状合法就代表引用目标存在。
+- 使用自由字符串 `user.prompt` 或 `stages.a.outputs.b` 代替结构化 `flowInput` / `stageOutput`，或只在 Run 塞入未声明输入。
 - 把 stage scope 的 `StagePreflightReady=True` 当成整次 Run 的执行门槛。
 - 把 `PreflightReady=True` 当成 Policy allow 或 Trust trusted。
 - 声称当前仓库有 Flow executor、Lifecycle dispatcher 或 Policy enforcement runtime。

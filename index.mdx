@@ -35,8 +35,8 @@ Huoban 活板的设计哲学来自**活字印刷术**。它把 `Skill` 理解为
 | --- | --- | --- |
 | `Skill` | 活字 | 声明可复用能力、输入输出和副作用。 |
 | `Profile` | 墨方 | 声明分层上下文、项目约束和团队规则。 |
-| `Flow` | 版式 | 声明 capability-first 的编排、阶段、停顿和产物。 |
-| `Run` | 锁版印刷 | 锁定一次执行的对象引用、mode、bindings，并可记录 `flowSpecHash`、`profileRefHash`、`policyRefHash` 与 `bindingHash`。 |
+| `Flow` | 版式 | 声明入口输入契约，以及 capability-first 的阶段、停顿和产物。 |
+| `Run` | 锁版印刷 | 锁定一次执行的对象引用、mode、bindings、`inputBindings` 与五个 snapshot hash。 |
 | `Checkpoint` | 校对 | 声明人类或系统必须判断的决策边界。 |
 | `Policy` | 印坊规矩 | 声明权限、副作用、审批和危险动作限制。 |
 | `Adapter` | 转接件 | 描述外部 skill、MCP tool、导入格式或外部能力如何进入 Huoban。 |

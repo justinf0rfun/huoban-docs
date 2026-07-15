@@ -1,7 +1,7 @@
 ---
 title: "Flow 对象"
 sidebarTitle: "Flow"
-description: "Flow 的 capability-first stage、输入输出、checkpoint 声明、Profile/Policy 引用和 lifecycle handler。"
+description: "Flow 的动态入口、capability-first stage、结构化输入来源、checkpoint、Profile/Policy 引用和 lifecycle handler。"
 ---
 
 `Flow` 是 Huoban 的版式：它声明 stage 如何排列、每个 stage 需要什么 capability、何处校对，以及哪些 lifecycle 集成跟随有限事件。Flow 是声明，不是 executor。
@@ -14,6 +14,11 @@ description: "Flow 的 capability-first stage、输入输出、checkpoint 声明
 | --- | --- | --- |
 | `spec.profileRefs` | 可选 | local object reference 数组。 |
 | `spec.policyRefs` | 可选 | local object reference 数组。 |
+| `spec.inputs` | 可选 | Flow 入口声明数组；name 应在 Flow 内唯一。 |
+| `spec.inputs[].name` | 每项必填 | 非空字符串，作为 Run binding key。 |
+| `spec.inputs[].type` | 每项必填 | `file`、`text`、`object` 或 `artifactRef`。 |
+| `spec.inputs[].required` | 每项必填 | boolean；是否要求每次 Run 都提供 binding。 |
+| `spec.inputs[].description` | 可选 | 面向作者和实现者的说明。 |
 | `spec.stages` | 必填，至少 1 项 | stage 数组。 |
 | `spec.checkpoints` | 可选 | Flow 内的 checkpoint 声明数组。 |
 | `spec.lifecycle` | 可选 | Lifecycle Handler 数组。 |
@@ -30,7 +35,9 @@ description: "Flow 的 capability-first stage、输入输出、checkpoint 声明
 | `uses` | 与 `requires` 至少存在一个 | 具体 Skill/Adapter 名称字符串；当前 CLI 称为 legacy shortcut。 |
 | `inputs` | 可选 | 输入映射数组。 |
 | `inputs[].name` | 必填 | 字符串。 |
-| `inputs[].from` | 必填 | 字符串；schema 不解释路径语法。 |
+| `inputs[].from` | 必填 | 结构化 `flowInput` 或 `stageOutput`，严格二选一。 |
+| `inputs[].from.flowInput` | 二选一 | `spec.inputs[].name`。 |
+| `inputs[].from.stageOutput` | 二选一 | 包含 `stage` 与 `output` 的对象。 |
 | `outputs` | 可选 | 预期输出数组。 |
 | `outputs[].name` | 必填 | 字符串。 |
 | `outputs[].artifactType` | 必填 | 字符串。 |
@@ -58,6 +65,11 @@ metadata:
   name: idea-to-spec-review
   generation: 2
 spec:
+  inputs:
+    - name: idea
+      type: file
+      required: true
+      description: Markdown source containing the idea to review.
   profileRefs:
     - name: huoban-open-source-project
   policyRefs:
@@ -69,7 +81,8 @@ spec:
         role: primary-review
       inputs:
         - name: idea
-          from: user.prompt
+          from:
+            flowInput: idea
       outputs:
         - name: review-notes
           artifactType: decision-notes
@@ -86,7 +99,7 @@ spec:
 
 ### Dry-run print
 
-`huoban print --dry-run` 读取一个 Flow，生成 `mode: dryRun` 的 Run。它复制 Flow profile/policy refs，加入命令行 refs 和 bindings，并生成 `flowSpecHash`、`profileRefHash`、`policyRefHash`、`bindingHash`。
+`huoban print --dry-run` 读取一个 Flow，拒绝重复 input name，并验证 required/unknown/type-mismatched `--input`，生成 `mode: dryRun` 的 Run。它复制 Flow profile/policy refs，加入命令行 refs、implementation bindings 与 input bindings，并生成 `flowSpecHash`、`profileRefHash`、`policyRefHash`、`bindingHash`、`inputBindingHash`。
 
 dry-run 只生成计划；它不执行 stage，也不自动运行 Preflight。
 
@@ -97,6 +110,8 @@ dry-run 只生成计划；它不执行 stage，也不自动运行 Preflight。
 - 解析 Flow ref 及请求的 generation。
 - 解析 Flow 与 Run 合并后的 Profile/Policy refs。
 - 报告重复 stage id 和重复 lifecycle handler id。
+- 报告重复 Flow input name、未声明 `flowInput`、不存在的 `stageOutput` 和不是前序 stage 的输出引用。
+- 检查 required Run input binding、未知 binding 与 binding type。
 - 对 `requires` 按 role 查 Run binding，并检查 Skill/Adapter 是否提供 capability。
 - 对 `uses` 要求 workspace 中恰好有一个同名 Skill 或 Adapter；它只支持 dry-run 与诊断，execute mode 会产生 `LegacyUseNotLocked`。
 - 检查 Lifecycle Handler 的 stage selector、binding 和依赖。
@@ -106,7 +121,7 @@ dry-run 只生成计划；它不执行 stage，也不自动运行 Preflight。
 ## 验证边界
 
 - schema 不要求 stage id 唯一；当前 Preflight 会检查重复。
-- schema 不检查 input `from` 是否指向真实输出，也不检查 output name/type 兼容性。
+- schema 封闭 `from` 形状；当前 Preflight 进一步检查 `flowInput` 声明和 `stageOutput` 的存在性与先后关系。当前协议不做 output artifact type 到下游 stage input type 的推断。
 - 当前 Preflight 不解析 checkpoint 的 `before`/`after` 或 reason。
 - Flow 的 `status` 不保存运行进度；实际进度属于 Run。
 - 当前仓库没有 Flow executor 或 Lifecycle dispatcher。
@@ -116,6 +131,7 @@ dry-run 只生成计划；它不执行 stage，也不自动运行 Preflight。
 | 容易混淆 | 精确边界 |
 | --- | --- |
 | Flow / Run | Flow 是可复用版式；Run 锁定一次具体引用、binding 和 snapshot。 |
+| Flow input / Run input binding | Flow input 是入口契约；Run input binding 是一次调用的值或内容引用。 |
 | stage `requires` / Requirement | stage `requires` 是 capability+role；`requirements[]` 是实现对象的环境依赖。 |
 | Flow checkpoint / Checkpoint | Flow 声明位置；Checkpoint 顶层对象记录一次 Run 的具体决策边界。 |
 | Flow output / Artifact | output 声明预期类型；Artifact 记录实际产物或证据。 |
@@ -126,6 +142,8 @@ dry-run 只生成计划；它不执行 stage，也不自动运行 Preflight。
 - 在同一 stage 同时写 `requires` 和 `uses`，只因为 schema 可以通过。
 - 省略 `requires.role` 却期望 Run 自动按 stage id 绑定。
 - 把外部文件或可执行程序写进 stage `requires`；这些属于 Skill/Profile/Adapter 的 Requirement。
+- 把调用文件写成 Requirement，或使用 `user.prompt`、`stages.a.outputs.b` 等自由字符串来源。
+- 让 stage 引用当前或未来 stage 的输出。
 - 把 shell command、模型参数或 runner 配置写入 Flow。
 - 声称 checkpoint 引用和 input/output 数据流已被当前 Preflight 验证。
 - 认为 dry-run 已经执行 stage 或证明环境就绪。

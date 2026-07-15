@@ -1,12 +1,12 @@
 ---
 title: "Flow 模型"
 sidebarTitle: "Flow 模型"
-description: "Flow 是 Huoban 的版式：声明 capability-first stage、默认上下文与治理引用、checkpoint、预期产物和有限生命周期处理器。"
+description: "Flow 是 Huoban 的版式：声明动态入口、capability-first stage、结构化数据流、治理引用、checkpoint、预期产物和有限生命周期处理器。"
 ---
 
 `Flow` 是 Huoban 的版式：定义一类 AI 工作应该如何被排版。
 
-它不执行任务，不保存结果，也不要求绑定某个具体 agent 工具。它描述的是工作结构：需要哪些 capability，分成哪些 stage，输入和输出如何传递，哪里需要 checkpoint，默认使用哪些 `Profile` 和 `Policy`，以及哪些有限生命周期事件需要上报或观察。
+它不执行任务，不保存结果，也不要求绑定某个具体 agent 工具。它描述的是工作结构：调用者要提供哪些输入，需要哪些 capability，分成哪些 stage，输入和输出如何传递，哪里需要 checkpoint，默认使用哪些 `Profile` 和 `Policy`，以及哪些有限生命周期事件需要上报或观察。
 
 本页属于核心概念，解释 `Flow` 的设计边界和编排模型；字段级定义、必填项和 schema 约束见 [Flow 规范](/spec-flow)。
 
@@ -16,6 +16,9 @@ description: "Flow 是 Huoban 的版式：声明 capability-first stage、默认
   </Card>
   <Card title="Capability-first" icon="plug" type="tip" color="#16A34A">
     stage 优先声明需要什么能力，而不是先绑定某个具体 skill。
+  </Card>
+  <Card title="入口先声明" icon="log-in" type="tip" color="#16A34A">
+    `spec.inputs` 定义调用契约；具体值只进入一次 `Run` 的 `inputBindings`。
   </Card>
   <Card title="Stage 是能力边界" icon="layers" type="tip" color="#16A34A">
     stage 描述 capability、输入、输出和校对边界，不是 shell step。
@@ -46,6 +49,7 @@ description: "Flow 是 Huoban 的版式：声明 capability-first stage、默认
 Flow 应回答的问题是结构问题：
 
 - 这类工作需要哪些 capability？
+- 每次调用必须或可以提供哪些动态输入？
 - 这些 capability 如何分成 stage？
 - 每个 stage 的输入来自哪里？
 - 每个 stage 预期输出什么 artifact 类型？
@@ -65,6 +69,11 @@ kind: Flow
 metadata:
   name: idea-to-spec-review
 spec:
+  inputs:
+    - name: idea
+      type: file
+      required: true
+      description: Markdown source containing the idea to review.
   profileRefs:
     - name: huoban-open-source-project
   policyRefs:
@@ -76,7 +85,8 @@ spec:
         role: primary-review
       inputs:
         - name: idea
-          from: user.prompt
+          from:
+            flowInput: idea
       outputs:
         - name: review-notes
           artifactType: decision-notes
@@ -97,11 +107,19 @@ mode: dryRun
 bindings:
   primary-review:
     adapterRef: grill-me-skill-md
+inputBindings:
+  idea:
+    type: file
+    contentRef:
+      type: file
+      path: examples/inputs/product-idea.md
+    hash: sha256:...
 snapshot:
   flowSpecHash: sha256:...
   profileRefHash: sha256:...
   policyRefHash: sha256:...
   bindingHash: sha256:...
+  inputBindingHash: sha256:...
 ```
 
 这样同一个 Flow 可以在不同工具、团队和执行环境中复用。
@@ -130,6 +148,42 @@ requires:
 
 这里的 `requires` 是 Flow 的**能力需求**：它包含 capability 与可选 role，用于选择实现。它不是 `Skill`、`Profile`、`Adapter` 上的 `requirements[]`；后者描述实现依赖的文件、程序、MCP 能力、凭据或上下文来源。详见 [Requirement](/requirement-model)。
 
+## 入口契约与内部数据流
+
+`Flow.spec.inputs` 声明调用入口，不保存某次调用的值：
+
+```yaml
+inputs:
+  - name: document
+    type: file
+    required: true
+  - name: instruction
+    type: text
+    required: false
+```
+
+v1alpha1 支持 `file`、`text`、`object` 和 `artifactRef`。具体调用值进入 `Run.spec.inputBindings`。这对结构解决两个不同问题：Flow 回答“这类工作接受什么”，Run 回答“这一次实际给了什么”。
+
+stage 只能使用两种结构化来源：
+
+```yaml
+inputs:
+  - name: document
+    from:
+      flowInput: document
+  - name: review-notes
+    from:
+      stageOutput:
+        stage: sharpen-idea
+        output: review-notes
+```
+
+`flowInput` 必须已在 Flow 入口声明；`stageOutput` 必须来自当前 stage 之前的已声明输出。Preflight 会拒绝未声明入口、不存在的输出和未来 stage 引用。任意字符串表达式不属于 v1alpha1。
+
+<Info>
+  动态输入不是 Requirement。输入说明这次处理什么；Requirement 说明目标环境需要具备什么。
+</Info>
+
 ## Stage 是能力边界
 
 Stage 是 Flow 中最小的能力编排单元。
@@ -144,7 +198,10 @@ requires:
   role: spec-writer
 inputs:
   - name: review-notes
-    from: stages.sharpen-idea.outputs.review-notes
+    from:
+      stageOutput:
+        stage: sharpen-idea
+        output: review-notes
 outputs:
   - name: spec-outline
     artifactType: markdown
@@ -248,7 +305,7 @@ policyRefs:
   - name: safe-defaults
 ```
 
-这些是 Flow 的默认引用，不是一次执行的最终事实。`Run` 声明本次执行使用的 `profileRefs` / `policyRefs`。v1alpha1 snapshot 可记录 `flowSpecHash`、`profileRefHash`、`policyRefHash` 和 `bindingHash`；后两类 ref hash 只覆盖引用列表，不等于被引用对象完整内容的快照。
+这些是 Flow 的默认引用，不是一次执行的最终事实。`Run` 声明本次执行使用的 `profileRefs` / `policyRefs`。v1alpha1 snapshot 记录 `flowSpecHash`、`profileRefHash`、`policyRefHash`、`bindingHash` 和 `inputBindingHash`；ref hash 只覆盖引用列表，不等于被引用对象完整内容的快照。
 
 这对应活字印刷术里的关系：同一版式可以换墨，也可以按不同印坊规矩印刷。
 
@@ -273,6 +330,6 @@ policyRefs:
 
 `idea-to-spec-review` 是 Huoban 的首个参考 Flow。
 
-它验证的不是“Huoban 能跑任意工作流”，而是一个更基础的标准化路径：现有 AI 能力可以被标准化成 `Skill` / `Adapter`，带着 `Profile` 排成 `Flow`，通过 `Checkpoint` 暴露判断边界，并在 `Run` / `Artifact` 中留下可审查记录。
+它验证的不是“Huoban 能跑任意工作流”，而是一个更基础的标准化路径：静态 Flow 可以声明动态文件入口，现有 AI 能力可以被标准化成 `Skill` / `Adapter`，带着 `Profile` 排成 `Flow`，通过 `Checkpoint` 暴露判断边界，并在 `Run` / `Artifact` 中留下可审查记录。
 
 从 [示例：idea-to-spec-review](/example-idea-to-spec-review) 开始阅读完整对象链路。

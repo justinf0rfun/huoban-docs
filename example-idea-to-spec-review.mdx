@@ -7,9 +7,10 @@ description: "用真实 Flow、Run、Checkpoint 和 Artifact 复现 capability-f
 `idea-to-spec-review` 把“先审查想法，再起草规格大纲”拆成可验证对象：
 
 1. `sharpen-idea` 需要 `huoban.dev/designReview`。
-2. 人类在方向 Checkpoint 做出 `approve`、`requestChanges` 或 `reject` 决策。
-3. `draft-spec-outline` 需要 `huoban.dev/specification`。
-4. `stage.succeeded` 可以声明一个 best-effort 上报 handler。
+2. 每次调用把一个 Markdown 文件绑定到 Flow 的 `idea` 入口。
+3. 人类在方向 Checkpoint 做出 `approve`、`requestChanges` 或 `reject` 决策。
+4. `draft-spec-outline` 需要 `huoban.dev/specification`，并读取前一 stage 的结构化输出。
+5. `stage.succeeded` 可以声明一个 best-effort 上报 handler。
 
 当前仓库验证、解释、打印和预检这些对象，但不执行 stage、解决 Checkpoint 或派发 lifecycle event。
 
@@ -19,6 +20,7 @@ description: "用真实 Flow、Run、Checkpoint 和 Artifact 复现 capability-f
 
 ```text
 Flow/idea-to-spec-review@2
+  input idea:file -> Run input binding -> examples/inputs/product-idea.md + hash
   profileRefs -> Profile/huoban-open-source-project
   policyRefs  -> Policy/safe-defaults
   stage role primary-review -> Run binding -> Adapter/grill-me-skill-md
@@ -47,6 +49,11 @@ metadata:
   name: idea-to-spec-review
   generation: 2
 spec:
+  inputs:
+    - name: idea
+      type: file
+      required: true
+      description: Markdown source containing the idea to review.
   profileRefs:
     - name: huoban-open-source-project
   policyRefs:
@@ -58,7 +65,8 @@ spec:
         role: primary-review
       inputs:
         - name: idea
-          from: user.prompt
+          from:
+            flowInput: idea
       outputs:
         - name: review-notes
           artifactType: decision-notes
@@ -68,7 +76,10 @@ spec:
         role: spec-writer
       inputs:
         - name: review-notes
-          from: stages.sharpen-idea.outputs.review-notes
+          from:
+            stageOutput:
+              stage: sharpen-idea
+              output: review-notes
       outputs:
         - name: spec-outline
           artifactType: markdown
@@ -105,7 +116,12 @@ npm run preflight
 `print:dry-run` 的当前 binding 参数是：
 
 ```bash
-node ./bin/huoban.js print --dry-run examples/flows/idea-to-spec-review.yaml --out examples/generated/idea-to-spec-review-dry-run.yaml --bind primary-review=adapter:grill-me-skill-md --bind spec-writer=skill:spec-outline-writer --bind stage-reporter=adapter:stage-reporting-mcp
+node ./bin/huoban.js print --dry-run examples/flows/idea-to-spec-review.yaml \
+  --out examples/generated/idea-to-spec-review-dry-run.yaml \
+  --input idea=file:examples/inputs/product-idea.md \
+  --bind primary-review=adapter:grill-me-skill-md \
+  --bind spec-writer=skill:spec-outline-writer \
+  --bind stage-reporter=adapter:stage-reporting-mcp
 ```
 
 生成 Run 的 `spec` 逐字取自 `examples/generated/idea-to-spec-review-dry-run.yaml`：
@@ -127,18 +143,27 @@ spec:
       skillRef: spec-outline-writer
     stage-reporter:
       adapterRef: stage-reporting-mcp
+  inputBindings:
+    idea:
+      type: file
+      sourcePath: examples/inputs/product-idea.md
+      contentRef:
+        type: file
+        path: examples/inputs/product-idea.md
+      hash: sha256:2fa7baf3030dddd710b3818c589ff8378d0d0b7f44af28e60ab1e254d159ac60
   snapshot:
-    flowSpecHash: sha256:b7a80c75e7a8f3f0e043d78623e84a0bd70def9f50134657751bf5e27a5fece2
+    flowSpecHash: sha256:54d40ab4b480360e5c80a1e00713cb30d6daaeeac37b8edd79874ff40178d2ff
     profileRefHash: sha256:7559a8d488bbdb57906ee5116931bc487bbae1841ab059037d9723c2d848bf77
     policyRefHash: sha256:745db2bbc095810039b9b13ef544ce49bd28e1f7474757cf256e27906fb65006
     bindingHash: sha256:9d47cbf573e28dad7fd0080bdc96894a27ba85377421e4e34f3455cc58a5f01b
+    inputBindingHash: sha256:fe4ec97370aa81ce5d1808282aef9e48f40928897c1e2feac954cacb6ef30e28
 ```
 
-这些值锁定 Flow spec、Profile refs、Policy refs 和 bindings。Preflight report 的 `snapshotHash` 另行哈希整个 `Run.spec`。
+这些值锁定 Flow spec、Profile refs、Policy refs、implementation bindings 和 input bindings。文件 binding 自身的 hash 针对原始 bytes；Preflight report 的 `snapshotHash` 另行哈希整个 `Run.spec`。
 
 ## 完整 authored Run
 
-`examples/runs/idea-to-spec-review-run.yaml` 是手写的协议状态示例，不是当前 CLI runtime 的执行输出。它使用与当前对象组合一致的四个 hash，展示 Checkpoint 等待和 lifecycle invocation 记录：
+`examples/runs/idea-to-spec-review-run.yaml` 是手写的协议状态示例，不是当前 CLI runtime 的执行输出。它使用与当前对象组合一致的五个 hash，展示 Checkpoint 等待和 lifecycle invocation 记录：
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
@@ -162,11 +187,20 @@ spec:
       skillRef: spec-outline-writer
     stage-reporter:
       adapterRef: stage-reporting-mcp
+  inputBindings:
+    idea:
+      type: file
+      sourcePath: examples/inputs/product-idea.md
+      contentRef:
+        type: file
+        path: examples/inputs/product-idea.md
+      hash: sha256:2fa7baf3030dddd710b3818c589ff8378d0d0b7f44af28e60ab1e254d159ac60
   snapshot:
-    flowSpecHash: sha256:b7a80c75e7a8f3f0e043d78623e84a0bd70def9f50134657751bf5e27a5fece2
+    flowSpecHash: sha256:54d40ab4b480360e5c80a1e00713cb30d6daaeeac37b8edd79874ff40178d2ff
     profileRefHash: sha256:d9ec168320ac8ea60d3aa5f049ce8a58bc0c625f1937d560c7e4b0d801f3d5d9
     policyRefHash: sha256:745db2bbc095810039b9b13ef544ce49bd28e1f7474757cf256e27906fb65006
     bindingHash: sha256:9d47cbf573e28dad7fd0080bdc96894a27ba85377421e4e34f3455cc58a5f01b
+    inputBindingHash: sha256:fe4ec97370aa81ce5d1808282aef9e48f40928897c1e2feac954cacb6ef30e28
 status:
   phase: WaitingForCheckpoint
   currentStage: sharpen-idea
@@ -262,6 +296,7 @@ Flow output 是预期产物声明；Artifact 是某次 Run 留下的内容引用
 | 过程 | 对象 | 当前 CLI 是否执行 |
 | --- | --- | --- |
 | 排列 capability stages | `Flow` | 只验证和解释。 |
+| 声明并锁定调用稿件 | `Flow.spec.inputs` + `Run.spec.inputBindings` | `print --dry-run` 会验证并生成；Preflight 会复核。 |
 | 注入上下文 | `Profile` | 只记录引用和 Requirement；不构造 runtime prompt。 |
 | 锁定实现 | `Run.spec.bindings` | `print --dry-run` 会生成。 |
 | 检查依赖 | Preflight evidence | CLI 会生成 Run status 与 Artifact。 |
@@ -274,6 +309,8 @@ Flow output 是预期产物声明；Artifact 是某次 Run 留下的内容引用
 | 目标 | 应修改的位置 |
 | --- | --- |
 | 改工作步骤 | `Flow.spec.stages`。 |
+| 改入口契约 | `Flow.spec.inputs`；不要直接给 Run 添加任意字段。 |
+| 为本次调用换稿件 | 重新生成 `Run.spec.inputBindings` 与 snapshot，不要热改旧 Run。 |
 | 更换实现 | `Run.spec.bindings`。 |
 | 添加 fallback | 对应 Run binding 的 `fallback`，不是 Flow。 |
 | 添加上下文依赖 | `Profile.spec.requirements`。 |

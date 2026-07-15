@@ -29,7 +29,7 @@ Requirement、Preflight Report、Lifecycle Handler 和 Lifecycle Event Envelope 
 | `huoban import` | Markdown + `--as Profile` | 规则推断后的 Profile YAML。 | 只支持 Profile，输出要求 review。 |
 | `huoban export` | Profile + `--to AGENTS.md` | Markdown。 | 只支持 `AGENTS.md` 目标。 |
 | `huoban derive policy` | Profile | 从 risk layer 生成 Policy。 | 只支持非空 `data.requiresApproval`，输出要求 review。 |
-| `huoban print --dry-run` | Flow | `mode: dryRun` 的 Run 计划。 | 不执行、不做 Preflight。 |
+| `huoban print --dry-run` | Flow + repeatable `--input` | 验证入口值并生成带 `inputBindings` 的 `mode: dryRun` Run 计划。 | 不执行、不做 Preflight。 |
 | `huoban preflight` | Run + workspace | 更新后的 Run + Preflight Report Artifact。 | 做机械就绪检查，不做授权或执行。 |
 
 ## Validation
@@ -69,9 +69,9 @@ npm run print:dry-run
 npm run preflight
 ```
 
-dry-run 生成 Run 计划及四类 snapshot hash：`flowSpecHash`、`profileRefHash`、`policyRefHash`、`bindingHash`。它不执行 stage，不探测依赖。
+dry-run 先验证 required、unknown 和 type-mismatched `--input`，再生成 Run 计划及五类 snapshot hash：`flowSpecHash`、`profileRefHash`、`policyRefHash`、`bindingHash`、`inputBindingHash`。它不执行 stage，不探测依赖。
 
-Preflight 默认 offline，检查锁定 Run 的可达引用、generation、capability binding、Requirement 和当前环境，并输出 Artifact 证据。只有显式 `--live` 才进行远程 context/MCP discovery；不会调用 MCP tool。
+Preflight 默认 offline，检查锁定 Run 的可达引用、generation、capability binding、入口 binding、结构化 stage source、Requirement 和当前环境，并输出 Artifact 证据。文件输入按原始 bytes 复核 hash。只有显式 `--live` 才进行远程 context/MCP discovery；不会调用 MCP tool。
 
 `execute` 计划必须有 Run scope 的 `PreflightReady=True` 才能通过当前 gate。stage scope 结果不能授权整次 Run；任何 Preflight readiness 都不能替代 Policy、Trust 或 Checkpoint。
 

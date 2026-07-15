@@ -33,7 +33,7 @@ validate -> explain / print dry-run -> preflight -> Policy / Trust / Checkpoint 
 | --- | --- | --- |
 | validate | 对象形状是否符合 schema？ | 引用、环境或授权。 |
 | explain | 对象关系是否可解释？ | snapshot 或 readiness。 |
-| print dry-run | Flow、refs、bindings 与分项 hashes 是否已锁入 Run？ | dependency checks。 |
+| print dry-run | Flow 入口、调用值、refs、bindings 与分项 hashes 是否已锁入 Run？ | dependency checks。 |
 | Preflight | dependency 是否 resolved，并在当前环境 ready？ | 权限、审批、信任提升或执行。 |
 | Policy / Trust / Checkpoint | 副作用规则、来源审查和决策边界是什么？ | sandbox 与平台级授权。 |
 | execute | runtime 是否可以执行？ | 当前仓库未实现。 |
@@ -70,9 +70,11 @@ Preflight 分开记录：
 - `resolution`：引用、generation、capability、binding 或动态 target 是否明确。
 - `readiness`：当前环境是否可访问、可执行或可发现。
 
-Preflight report 的 `snapshotHash` 哈希整个 `Run.spec`。Preflight 还会重算并比对 `flowSpecHash`、`profileRefHash`、`policyRefHash` 和 `bindingHash`；任一缺失或不匹配都会阻断权威结果。修改 Run spec 后必须重新比较或生成 evidence。
+Preflight report 的 `snapshotHash` 哈希整个 `Run.spec`。Preflight 还会重算并比对 `flowSpecHash`、`profileRefHash`、`policyRefHash`、`bindingHash` 和 `inputBindingHash`；任一缺失或不匹配都会阻断权威结果。修改 Run spec 后必须重新比较或生成 evidence。
 
-这些 hash 锁定声明与选择，不归档每个 Skill 或 Adapter 的完整内容。报告未签名；通过 schema 也不能证明来源、未篡改或时钟可信。
+这些 hash 锁定声明与选择，不归档每个 Skill 或 Adapter 的完整内容。文件输入与本地 file-backed Artifact 额外按原始 bytes 校验 SHA-256；无法取回内容的远程 Artifact readiness 保持 `Unknown`。报告未签名；通过 schema 也不能证明来源、未篡改或时钟可信。
+
+`text` 与 `object` 输入会以内联值进入 `Run.spec.inputBindings` 和 `inputBindingHash`。不要把 secret、credential 或生产数据作为 inline input；`explain` 不输出这些值，但 Run 文件本身仍持有它们。敏感输入应使用受控内容引用，并由采用方施加存储、访问与保留策略。
 
 inferred Requirement 如果是 `reviewStatus: needsReview`，resolution 与 readiness 都保持 `Unknown`。当前 CLI 没有自动接受或状态迁移。
 
@@ -84,6 +86,8 @@ offline 会检查：
 
 - object refs 与 generation。
 - stage capability 与 Run binding。
+- Flow required input、未知 binding、类型匹配与结构化 stage input source。
+- 本地 file input 的原始 bytes hash，以及可解析 Artifact input 的 generation、声明 hash 与实际内容。
 - local path access。
 - executable 是否在 `PATH` 上。
 - credential 环境变量是否存在，但不读取其值到 report。

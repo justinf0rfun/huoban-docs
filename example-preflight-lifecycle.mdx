@@ -4,8 +4,9 @@ sidebarTitle: "Preflight 与 Lifecycle"
 description: "复现 Requirement、Run scope Preflight、离线 MCP evidence 和有限 Lifecycle Handler 声明。"
 ---
 
-这个 example 展示三个嵌入式执行契约：
+这个 example 把调用输入与三个嵌入式执行契约串成同一条验证路径：
 
+- `Flow.spec.inputs` 声明动态稿件，`Run.spec.inputBindings` 锁定本次文件与 hash。
 - `Requirement` 声明 `Skill`、`Profile` 或 `Adapter` 的目标环境依赖。
 - Preflight 分别记录 dependency resolution 与 current-environment readiness。
 - Lifecycle Handler 用有限事件声明观察、上报和清理集成。
@@ -27,7 +28,7 @@ description: "复现 Requirement、Run scope Preflight、离线 MCP evidence 和
 | `Skill/spec-outline-writer` | `executable` | `node` 在 `PATH` 上可执行。 |
 | `Adapter/stage-reporting-mcp` | `mcpTool` | MCP endpoint 与 `report_stage` tool 已声明；offline readiness 为 `Unknown`。 |
 
-这些 Requirement 分别嵌入 Profile、Adapter 和 Skill，而不是放进 Run 顶层。
+这些 Requirement 分别嵌入 Profile、Adapter 和 Skill，而不是放进 Run 顶层。`examples/inputs/product-idea.md` 是一次调用的稿件，不是环境依赖，因此由 Flow input 与 Run input binding 表达。
 
 ## 完整 reporting Adapter
 
@@ -107,6 +108,11 @@ metadata:
   name: idea-to-spec-review
   generation: 2
 spec:
+  inputs:
+    - name: idea
+      type: file
+      required: true
+      description: Markdown source containing the idea to review.
   profileRefs:
     - name: huoban-open-source-project
   policyRefs:
@@ -118,7 +124,8 @@ spec:
         role: primary-review
       inputs:
         - name: idea
-          from: user.prompt
+          from:
+            flowInput: idea
       outputs:
         - name: review-notes
           artifactType: decision-notes
@@ -128,7 +135,10 @@ spec:
         role: spec-writer
       inputs:
         - name: review-notes
-          from: stages.sharpen-idea.outputs.review-notes
+          from:
+            stageOutput:
+              stage: sharpen-idea
+              output: review-notes
       outputs:
         - name: spec-outline
           artifactType: markdown
@@ -171,6 +181,7 @@ npm run preflight
 ```bash
 node ./bin/huoban.js print --dry-run examples/flows/idea-to-spec-review.yaml \
   --out tmp/idea-to-spec-review-dry-run.yaml \
+  --input idea=file:examples/inputs/product-idea.md \
   --bind primary-review=adapter:grill-me-skill-md \
   --bind spec-writer=skill:spec-outline-writer \
   --bind stage-reporter=adapter:stage-reporting-mcp
@@ -217,11 +228,20 @@ spec:
       skillRef: spec-outline-writer
     stage-reporter:
       adapterRef: stage-reporting-mcp
+  inputBindings:
+    idea:
+      type: file
+      sourcePath: examples/inputs/product-idea.md
+      contentRef:
+        type: file
+        path: examples/inputs/product-idea.md
+      hash: sha256:2fa7baf3030dddd710b3818c589ff8378d0d0b7f44af28e60ab1e254d159ac60
   snapshot:
-    flowSpecHash: sha256:b7a80c75e7a8f3f0e043d78623e84a0bd70def9f50134657751bf5e27a5fece2
+    flowSpecHash: sha256:54d40ab4b480360e5c80a1e00713cb30d6daaeeac37b8edd79874ff40178d2ff
     profileRefHash: sha256:7559a8d488bbdb57906ee5116931bc487bbae1841ab059037d9723c2d848bf77
     policyRefHash: sha256:745db2bbc095810039b9b13ef544ce49bd28e1f7474757cf256e27906fb65006
     bindingHash: sha256:9d47cbf573e28dad7fd0080bdc96894a27ba85377421e4e34f3455cc58a5f01b
+    inputBindingHash: sha256:fe4ec97370aa81ce5d1808282aef9e48f40928897c1e2feac954cacb6ef30e28
 status:
   phase: Planned
   conditions:
@@ -251,7 +271,7 @@ status:
   preflight:
     scope:
       type: run
-    snapshotHash: sha256:727425f3b2752558c1857b555989abf5b1e56a5c1a34e85cc831313ff0f25669
+    snapshotHash: sha256:dc036d6fb965dab3d7d8c6b64683a2a60aad869998972b1c3760c736800ec967
     checkedAt: 2026-07-15T00:00:00.000Z
     reportRef:
       kind: Artifact
