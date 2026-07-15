@@ -1,81 +1,117 @@
 ---
 title: "导入 CLAUDE.md"
 sidebarTitle: "导入 CLAUDE.md"
-description: "把 Claude Code 项目记忆迁移为 Huoban Profile。"
+description: "用当前通用 Markdown importer 生成 Profile，并明确尚无 CLAUDE.md 专用解析器或导出器。"
 ---
 
-# 导入 CLAUDE.md
+当前 CLI 可以把 `CLAUDE.md` 当作普通 Markdown 文件导入 `Profile`。这不是 CLAUDE.md 专用 parser：CLI 不解释工具专属优先级、作用域或继承语义。
 
-`CLAUDE.md` 通常承载 Claude Code 项目的长期记忆：项目背景、常用命令、代码风格、测试方式和协作约定。
+## 运行导入
 
-Huoban 将它视为一种 profile file，可以导入为 `Profile`，再按需要导出回 `CLAUDE.md`。
-
-## 命令
+在包含 `CLAUDE.md` 的目录运行：
 
 ```bash
-huoban import CLAUDE.md --as Profile --out profiles/claude-profile.yaml
+npm exec -- huoban import CLAUDE.md --as Profile --out profiles/claude-profile.yaml
+npm exec -- huoban validate profiles/claude-profile.yaml
+npm exec -- huoban explain profiles/claude-profile.yaml
 ```
 
-## 迁移重点
+当前 importer 会：
 
-Claude Code 的记忆文件往往较偏自然语言，因此导入时应保守：
+- 把 style/coding/review 等匹配内容归入 `style`。
+- 把 command/test/build/lint 等匹配内容归入 `commands`。
+- 把 risk/permission/git/publish/secret 等匹配内容归入 `risk`。
+- 把未匹配内容归入 `source`。
+- 在每个 layer 的 `content` 中保留匹配到的原文。
+- 写入 `ProfileImported=True` 与 `ImportNeedsReview=True`。
 
-- 明确规则进入 `data`。
-- 解释性文字保留在 `content`。
-- 无法判断的约束不强行结构化。
-- 与权限有关的规则转成 Policy 建议。
+对象名来自输入 basename，因此 `CLAUDE.md` 默认生成 `claude-profile`。
 
-## 推荐 layer
+## 当前没有 public golden example
 
-- `project`：项目目标和背景。
-- `architecture`：模块边界和技术路线。
-- `commands`：构建、测试、lint、类型检查命令。
-- `style`：编码风格和改动原则。
-- `review`：提交前检查和审查标准。
-- `risk`：需要人工确认的行为。
+source repo 当前只有 `examples/import/AGENTS.md` 的确定性 import fixture，没有 CLAUDE.md fixture。因此不要声称 CLAUDE.md 的特定 frontmatter、imports 或作用域已经被标准化。
 
-## 示例
+可使用下面的完整 AGENTS.md public output 作为字段参考：
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
 kind: Profile
 metadata:
-  name: claude-project-profile
+  name: agents-profile
+  labels:
+    huoban.dev/imported-from: examples/import/AGENTS.md
 spec:
   layers:
-    - name: commands
-      data:
-        test: pnpm test
-        lint: pnpm lint
-      content: |
-        Run pnpm test and pnpm lint before finalizing substantial changes.
     - name: style
       data:
-        preserveExistingStyle: true
-      content: |
-        Match the existing code style. Avoid unrelated refactors.
+        preferSmallChanges: true
+        avoidUnrelatedRefactor: true
+        testFirstForBugfixes: true
+      content: |-
+        Prefer small surgical changes. Do not refactor unrelated code.
+        Use test-first changes for bug fixes when practical.
+    - name: commands
+      data:
+        commands:
+          - npm run validate
+          - npm run explain
+      content: |-
+        Run `npm run validate` before finalizing schema or example changes.
+        Use `npm run explain` to inspect the example workspace.
+    - name: risk
+      data:
+        requiresApproval:
+          - publishRemote
+          - modifyGitHistory
+          - accessSecret
+        inferred: true
+      content: Ask before modifying git history, publishing remote changes, or accessing secrets.
 status:
   conditions:
+    - type: ProfileImported
+      status: "True"
+      reason: ImportedFromMarkdown
+      message: examples/import/AGENTS.md was converted into Profile layers.
     - type: ImportNeedsReview
       status: "True"
-      reason: ToolSpecificMemory
-      message: "Imported from CLAUDE.md; review before using as a cross-tool profile."
+      reason: RuleBasedInference
+      message: Structured fields were inferred by deterministic rules and should be reviewed.
 ```
 
-## 导出
+这段逐字取自 `examples/generated/agents-profile.yaml`，不是 CLAUDE.md 预期 golden output。`examples/...` 是 source tree 路径，不是文档站链接。
+
+## review 重点
+
+| 内容 | 处理方式 |
+| --- | --- |
+| 项目背景与架构说明 | 保留在 Profile layer 的 `content`，需要时补充项目私有 `data`。 |
+| 构建、测试、lint 命令 | 检查 importer 抽取的 `commands` 是否完整。 |
+| 危险操作规则 | 由独立 Policy 表达；不要只依赖 Profile 自然语言。 |
+| Claude 专属行为 | 保留原文，不要伪装成已标准化跨工具语义。 |
+| 外部文件引用 | 如果是执行依赖，显式增加 Profile `requirements`，再做 Preflight。 |
+
+## Policy derive 的条件
+
+如果导入结果包含非空 `risk.data.requiresApproval`，可以运行：
 
 ```bash
+npm exec -- huoban derive policy profiles/claude-profile.yaml --out policies/claude-risk-policy.yaml
+```
+
+否则当前 CLI 会报错；它不会从任意 risk prose 发明 Policy。
+
+## 导出边界
+
+当前命令不支持：
+
+```text
 huoban export profiles/claude-profile.yaml --to CLAUDE.md
 ```
 
-导出时应生成 Claude Code 易读的 Markdown，而不是暴露完整 YAML 结构。
+当前 export 只接受 `--to AGENTS.md`。如果必须继续维护 CLAUDE.md，应保留原文件，或通过明确 review 的项目工具生成；不要在文档中虚构 Huoban 的双向 CLAUDE.md round trip。
 
-## 边界
+## 下一步
 
-`CLAUDE.md` 可以继续存在。Huoban 不要求用户删除它。
-
-推荐做法是：
-
-- Huoban Profile 作为标准源。
-- `CLAUDE.md` 作为某个工具生态的导出产物。
-- 当 Profile 变化时，重新导出。
+- [导入 AGENTS.md](/import-agents-md)
+- [Profile 规范](/spec-profile)
+- [Preflight 与 Lifecycle](/example-preflight-lifecycle)

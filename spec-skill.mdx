@@ -1,53 +1,46 @@
 ---
 title: "Skill 对象"
 sidebarTitle: "Skill"
-description: "Skill 是 Huoban 的原子能力对象，声明 capability、输入输出、上下文提示和副作用。"
+description: "Skill 的 capability、输入输出、外部 Requirement、副作用、checkpoint 提示与 Adapter 关联。"
 ---
 
-# Skill 对象
+`Skill` 是 Huoban 的活字：可复用、可重排的原子能力声明。Skill 描述能力及其边界，不保存项目上下文，不排列 stage，也不执行权限判断。
 
-`Skill` 是 Huoban 的活字：一枚可被识别、复用、移动和重新排版的能力单元。
+设计背景见 [对象模型](/object-model)，共享资源外壳见 [规范参考总览](/spec-reference)。
 
-规范页只定义 Skill 的字段形状和验证边界。为什么 Skill 要独立于 Profile 和 Flow，请读 [Skill 是活字](/design-philosophy#skill-是活字) 与 [对象模型](/object-model)。
+## 字段
 
-## 对象职责
-
-Skill 解决的问题是：把“某个 AI 能力能做什么”从 prompt、工具 UI 或个人习惯中提取出来，变成可验证对象。
-
-Skill 负责声明：
-
-- 它提供哪些 `capabilities`。
-- 它接受哪些输入、产生哪些输出。
-- 它可能需要哪些 Profile layer。
-- 它可能产生哪些副作用。
-- 它是否建议或要求 checkpoint。
-- 它是否来自某个 Adapter。
-
-Skill 不负责：
-
-- 保存项目上下文；这属于 `Profile`。
-- 排列多个能力；这属于 `Flow`。
-- 记录一次执行；这属于 `Run`。
-- 批准危险操作；这属于 `Policy` 和 `Checkpoint`。
-- 记录产物正文；这属于 `Artifact`。
-
-## v1alpha1 字段
-
-| 字段 | 要求 | 说明 |
+| 字段 | 要求 | Schema 语义 |
 | --- | --- | --- |
-| `spec.capabilities` | 必填，至少 1 个，唯一 | capability 名称，格式为 `domain/name`，例如 `huoban.dev/designReview`。 |
-| `spec.inputs` | 可选 | 输入声明。每项必须有 `name`，可附加实现侧字段。 |
-| `spec.outputs` | 可选 | 输出声明。每项必须有 `name`，可声明 `artifactType`。 |
-| `spec.profileHints` | 可选 | 推荐注入的 Profile layer 名称。 |
-| `spec.sideEffects` | 必填 | 副作用声明对象。 |
-| `spec.sideEffects.declared` | 必填 | 可能发生的标准 side effect 数组。 |
-| `spec.checkpoint` | 可选，开放结构 | 建议或要求校对的提示，不是 Checkpoint 实例。 |
-| `spec.adapterRef` | 可选 | 如果 Skill 由外部来源提升而来，引用来源 Adapter。 |
-| `status` | 可选 | validator、registry 或 runtime 写入的事实状态。 |
+| `spec.capabilities` | 必填，至少 1 项、不可重复 | 每项匹配 `^[a-z0-9.-]+/[A-Za-z][A-Za-z0-9]*$`。 |
+| `spec.inputs` | 可选 | 输入数组。 |
+| `spec.inputs[].name` | 必填 | 字符串。 |
+| `spec.inputs[].type` | 可选 | 字符串；input item 允许其他扩展字段。 |
+| `spec.outputs` | 可选 | 输出数组。 |
+| `spec.outputs[].name` | 必填 | 字符串。 |
+| `spec.outputs[].artifactType` | 可选 | 字符串；output item 允许其他扩展字段。 |
+| `spec.profileHints` | 可选 | Profile layer 名称提示的字符串数组，不是对象引用。 |
+| `spec.requirements` | 可选 | 外部依赖数组，见 [Requirement](/spec-requirement)。 |
+| `spec.sideEffects` | 必填 | 副作用声明对象，不允许其他字段。 |
+| `spec.sideEffects.declared` | 必填 | 标准副作用数组，不可重复；可以为空。 |
+| `spec.checkpoint` | 可选 | 开放对象；schema 不规定内部字段。 |
+| `spec.adapterRef` | 可选 | local object reference，指向关联 Adapter。 |
+| `status` | 可选 | 通用状态结构，见 [资源外壳](/spec-reference#资源外壳)。 |
 
-`inputs`、`outputs` 和 `checkpoint` 允许实现侧附加字段；`capabilities` 和 `sideEffects.declared` 是跨工具互操作的核心字段。
+## 副作用枚举
 
-## 最小合法示例
+`sideEffects.declared` 只能包含：
+
+```text
+readFile, writeFile, deleteFile, executeCommand,
+modifyGitIndex, modifyGitHistory, networkAccess, sendMessage,
+publishRemote, spendMoney, accessSecret, installDependency,
+changePermission
+```
+
+这是可能副作用的声明，不是已发生事实，也不是授权。实际观察值可写入 `Run.status.observedSideEffects`；允许、拒绝或审批由 Policy 决定。
+
+## 合法示例
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
@@ -72,35 +65,41 @@ spec:
     reason: human-design-decision
 ```
 
-参考 example：`examples/skills/design-review.yaml`。
+对应 source example：`examples/skills/design-review.yaml`。
 
-## 验证规则
+## 当前 CLI 行为
 
-validator 至少应检查：
+- `validate` 检查本页字段、capability 正则、必填项和副作用枚举。
+- `explain` 输出 capabilities、Requirement、输入输出、副作用及 checkpoint reason。
+- 当 Skill 被 Run stage 或 Lifecycle Handler 绑定时，Preflight 检查它是否提供所需 capability，并检查其 Requirement。
+- 如果被绑定 Skill 有 `adapterRef`，Preflight 解析 Adapter，继续检查 Adapter Requirement、`trustRef` 和关联 Policy。
+- 未被当前 Run 使用的 Skill 不会因为位于 workspace 就自动接受 Preflight 检查。
 
-- `kind` 必须是 `Skill`。
-- `metadata.name` 必须是合法本地对象名。
-- `spec.capabilities` 至少包含一个合法 capability，且不能重复。
-- `spec.sideEffects.declared` 必须存在，即使数组为空。
-- `sideEffects.declared` 只能使用标准枚举：`readFile`、`writeFile`、`deleteFile`、`executeCommand`、`modifyGitIndex`、`modifyGitHistory`、`networkAccess`、`sendMessage`、`publishRemote`、`spendMoney`、`accessSecret`、`installDependency`、`changePermission`。
-- 如果存在 `adapterRef`，它必须能解析到 `Adapter` 或在 condition 中标记 unresolved。
+当前仓库不执行 Skill。
 
-## 与相邻对象的边界
+## 验证边界
 
-| 容易混淆 | 边界 |
+- schema 不要求 input/output 名称唯一，也不解释类型兼容性。
+- schema 不解释 `profileHints`，不检查 layer 是否存在。
+- `checkpoint` 是开放提示结构，不等于一次 [Checkpoint](/spec-checkpoint) 对象。
+- 普通 schema validation 不解析 `adapterRef`；当前 Preflight 只在 Skill 可达时解析。
+- Skill 的副作用声明不会触发 Policy rule evaluation；当前 Preflight 不执行授权。
+
+## 相邻概念边界
+
+| 容易混淆 | 精确边界 |
 | --- | --- |
-| `Skill` / `Adapter` | Skill 是原生能力声明；Adapter 是外部来源进入 Huoban 的标准化边界。 |
-| `Skill` / `Profile` | Skill 不携带项目上下文；Profile 注入项目规则、领域语言和历史决策。 |
-| `Skill` / `Flow` | Skill 声明能力；Flow 决定能力如何排列。 |
-| `Skill` / `Policy` | Skill 声明可能副作用；Policy 决定是否允许、拒绝或要求审批。 |
+| Skill / Adapter | Skill 是原子能力对象；Adapter 标准化导入格式或外部能力。 |
+| Skill / Profile | Skill 声明能力；Profile 提供分层上下文。 |
+| Skill / Flow | Skill 提供 capability；Flow 声明 stage 需要什么 capability。 |
+| Skill / Policy | Skill 声明可能副作用；Policy 声明处理规则。 |
+| `checkpoint` / Checkpoint | Skill 字段是开放提示；Checkpoint 是绑定具体 Run 的顶层对象。 |
 
 ## 常见错误
 
-- 把团队代码风格写进 Skill。应写入 `Profile.layers`。
-- 把执行顺序写进 Skill。应写入 `Flow.stages`。
-- 省略 `sideEffects.declared`。没有副作用也要显式写 `declared: []`。
-- 把外部 `SKILL.md` 直接视为 trusted Skill。默认应先生成 `Adapter`，review 后再提升。
-
-## 活字印刷位置
-
-Skill 对应“活字”。一枚活字必须有规格，才能进入字架、被选择、被排版、被润墨、被校对并最终参与印刷。Skill 的规格就是 capability、输入、输出和副作用边界。
+- 漏写必填的 `sideEffects.declared`；无副作用时应写 `declared: []`。
+- 把 capability 写成没有 `/` 的自由文本。
+- 把外部环境依赖藏进 input 或 prompt，而不写 `requirements[]`。
+- 把 `profileHints` 当作 Profile object reference。
+- 认为 Skill 声明了 `writeFile` 就已经获得写权限。
+- 把具体执行顺序或 shell 命令写进 Skill；编排属于 Flow，外部执行接口属于 Adapter。

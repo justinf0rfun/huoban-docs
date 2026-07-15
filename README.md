@@ -1,55 +1,38 @@
-# Mintlify Starter Kit
+# Huoban documentation
 
-Use the starter kit to get your docs deployed and ready to customize.
+This repository contains the Mintlify source for the Huoban documentation site.
 
-Click the green **Use this template** button at the top of this repo to copy the Mintlify starter kit. The starter kit contains examples with
+Huoban 是 AI 系统的开放编排协议：可排版、可润墨、可印刷。
 
-- Guide pages
-- Navigation
-- Customizations
-- API reference pages
-- Use of popular components
+## Source of truth
 
-**[Follow the full quickstart guide](https://starter.mintlify.com/quickstart)**
+- Protocol schemas, CLI behavior, and executable examples live in the `huoban` source repository.
+- Public documentation pages and navigation live in this repository.
+- Production deploys from `main` through the Mintlify Git integration.
 
-## AI-assisted writing
+When protocol behavior changes, update the source repository first, then update the corresponding model page, specification page, example, glossary entry, and changelog here.
 
-Set up your AI coding tool to work with Mintlify:
+## Local development
+
+Use Node.js 20.17 or later.
 
 ```bash
-npx skills add https://mintlify.com/docs
+npx mintlify dev --port 3333
 ```
 
-This command installs Mintlify's documentation skill for your configured AI tools like Claude Code, Cursor, Windsurf, and others. The skill includes component reference, writing standards, and workflow guidance.
+Open `http://localhost:3333`.
 
-See the [AI tools guides](/ai-tools) for tool-specific setup.
+## Validation
 
-## Development
+Run all documentation checks before committing:
 
-Install the [Mintlify CLI](https://www.npmjs.com/package/mint) to preview your documentation changes locally. To install, use the following command:
-
-```
-npm i -g mint
-```
-
-Run the following command at the root of your documentation, where your `docs.json` is located:
-
-```
-mint dev
+```bash
+npx mintlify validate
+npx mintlify broken-links
+npx mintlify a11y
+git diff --check
 ```
 
-View your local preview at `http://localhost:3000`.
+## Publishing
 
-## Publishing changes
-
-Install our GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app) to propagate changes from your repo to your deployment. Changes are deployed to production automatically after pushing to the default branch.
-
-## Need help?
-
-### Troubleshooting
-
-- If your dev environment isn't running: Run `mint update` to ensure you have the most recent version of the CLI.
-- If a page loads as a 404: Make sure you are running in a folder with a valid `docs.json`.
-
-### Resources
-- [Mintlify documentation](https://mintlify.com/docs)
+Push reviewed commits to `main`. Mintlify builds and publishes the Git-backed deployment automatically; the hosted editor is not the source of truth.

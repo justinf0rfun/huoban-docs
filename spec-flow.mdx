@@ -1,63 +1,62 @@
 ---
 title: "Flow 对象"
 sidebarTitle: "Flow"
-description: "Flow 是 Huoban 的版式对象，按 capability-first 声明 stage、输入输出、checkpoint、Profile 和 Policy 引用。"
+description: "Flow 的 capability-first stage、输入输出、checkpoint 声明、Profile/Policy 引用和 lifecycle handler。"
 ---
 
-# Flow 对象
+`Flow` 是 Huoban 的版式：它声明 stage 如何排列、每个 stage 需要什么 capability、何处校对，以及哪些 lifecycle 集成跟随有限事件。Flow 是声明，不是 executor。
 
-`Flow` 是 Huoban 的版式：它声明能力如何排列、上下文如何传递、哪里需要校对、预期会产生什么产物。
+设计背景见 [Flow 模型](/flow-model)，Lifecycle fragment 见 [Lifecycle Handler](/spec-lifecycle-handler)。
 
-规范页定义 Flow 的字段形状和验证边界。为什么 Flow 不应该绑定 runner，请读 [Flow 模型](/flow-model)。
+## 顶层字段
 
-## 对象职责
-
-Flow 解决的问题是：工作流不能只存在于 prompt、聊天习惯或某个工具的私有 workflow 里。它必须能被声明、解释、dry-run、审查和跨 runner 绑定。
-
-Flow 负责描述：
-
-- 默认 `Profile` 和 `Policy` 引用。
-- stage 顺序。
-- 每个 stage 需要的 capability 或直接使用的外部对象。
-- 输入来源。
-- 输出 artifact 声明。
-- 必须停下来的 checkpoint。
-
-Flow 不负责：
-
-- 选择最终模型或 runner；这属于 `Run.bindings` 或实现侧 binding。
-- 保存执行状态；这属于 `Run.status`。
-- 保存产物正文；这属于 `Artifact`。
-- 控制权限；这属于 `Policy`。
-
-## v1alpha1 字段
-
-| 字段 | 要求 | 说明 |
+| 字段 | 要求 | Schema 语义 |
 | --- | --- | --- |
-| `spec.profileRefs` | 可选 | Flow 默认使用的 Profile 引用。 |
-| `spec.policyRefs` | 可选 | Flow 默认使用的 Policy 引用。 |
-| `spec.stages` | 必填，至少 1 个 | 阶段数组。 |
-| `spec.stages[].id` | 必填 | stage 稳定 id。 |
-| `spec.stages[].requires` | 与 `uses` 至少一个 | capability-first 的能力需求。 |
-| `spec.stages[].requires.capability` | `requires` 内必填 | 需要的 capability。 |
-| `spec.stages[].requires.role` | 可选 | 在 Run binding 中使用的角色名。 |
-| `spec.stages[].uses` | 与 `requires` 至少一个 | 直接引用具体 Skill 或 Adapter 的 shortcut。 |
-| `spec.stages[].inputs` | 可选 | stage 输入来源。 |
-| `spec.stages[].outputs` | 可选 | stage 预期产物声明。 |
-| `spec.checkpoints` | 可选 | Flow 级 checkpoint 声明。 |
-| `status` | 可选 | validation、resolution 或 planning 状态。 |
+| `spec.profileRefs` | 可选 | local object reference 数组。 |
+| `spec.policyRefs` | 可选 | local object reference 数组。 |
+| `spec.stages` | 必填，至少 1 项 | stage 数组。 |
+| `spec.checkpoints` | 可选 | Flow 内的 checkpoint 声明数组。 |
+| `spec.lifecycle` | 可选 | Lifecycle Handler 数组。 |
+| `status` | 可选 | 通用状态。 |
 
-每个 stage 必须至少有 `requires` 或 `uses`。当前 schema 使用 `anyOf`，因此二者同时出现也能通过 schema。为了互操作，推荐只写 `requires.capability`，让不同 runner 在 `Run.bindings` 中选择具体 Skill 或 Adapter。
+## Stage 字段
 
-如果同时写 `requires` 和 `uses`，v1alpha1 schema 不定义跨实现优先级。实现可以把 `uses` 视为直接绑定 shortcut，也可以在 workspace validation 中报告歧义。公开示例应避免双写。
+| 字段 | 要求 | Schema 语义 |
+| --- | --- | --- |
+| `id` | 必填 | 字符串；schema 不要求非空或唯一。 |
+| `requires` | 与 `uses` 至少存在一个 | capability-first 需求对象。 |
+| `requires.capability` | `requires` 内必填 | 合法 capability。 |
+| `requires.role` | 可选 | Run binding key 字符串。 |
+| `uses` | 与 `requires` 至少存在一个 | 具体 Skill/Adapter 名称字符串；当前 CLI 称为 legacy shortcut。 |
+| `inputs` | 可选 | 输入映射数组。 |
+| `inputs[].name` | 必填 | 字符串。 |
+| `inputs[].from` | 必填 | 字符串；schema 不解释路径语法。 |
+| `outputs` | 可选 | 预期输出数组。 |
+| `outputs[].name` | 必填 | 字符串。 |
+| `outputs[].artifactType` | 必填 | 字符串。 |
 
-## 最小合法示例
+stage item 不允许表中之外的字段。schema 的 `anyOf` 允许同时写 `requires` 与 `uses`，但当前 Preflight 会把这种组合记录为 `AmbiguousStageBinding` 失败。
+
+## Checkpoint 声明字段
+
+| 字段 | 要求 | Schema 语义 |
+| --- | --- | --- |
+| `type` | 必填 | 字符串。 |
+| `required` | 必填 | boolean。 |
+| `after` | 可选 | stage id 字符串。 |
+| `before` | 可选 | stage id 字符串。 |
+| `reason` | 可选 | 字符串。 |
+
+schema 不要求 `after` 或 `before`，也不禁止二者同时出现。当前 Preflight 不解析 checkpoint 位置；不要把解释器显示位置误认为关系验证。
+
+## 合法示例
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
 kind: Flow
 metadata:
   name: idea-to-spec-review
+  generation: 2
 spec:
   profileRefs:
     - name: huoban-open-source-project
@@ -81,42 +80,52 @@ spec:
       reason: ConfirmDirectionBeforeSpec
 ```
 
-参考 example：`examples/flows/idea-to-spec-review.yaml`。
+对应 source example：`examples/flows/idea-to-spec-review.yaml`。
 
-## 验证规则
+## 当前 CLI 行为
 
-validator 至少应检查：
+### Dry-run print
 
-- `kind` 必须是 `Flow`。
-- `spec.stages` 至少包含一个 stage。
-- 每个 stage 必须有 `id`。
-- 每个 stage 必须至少有 `requires` 或 `uses`。
-- `requires.capability` 必须符合 capability 格式。
-- `requires.role` 如果存在，推荐在同一 Flow 内唯一，因为它会作为 `Run.bindings` 的 key。
-- `inputs[].name` 和 `inputs[].from` 必须同时存在。
-- `outputs[].name` 和 `outputs[].artifactType` 必须同时存在。
-- checkpoint 必须声明 `type` 和 `required`。
-- `checkpoints[].after` 或 `before` 应能解析到 stage id；schema 不强制，但 workspace validator 应检查。
+`huoban print --dry-run` 读取一个 Flow，生成 `mode: dryRun` 的 Run。它复制 Flow profile/policy refs，加入命令行 refs 和 bindings，并生成 `flowSpecHash`、`profileRefHash`、`policyRefHash`、`bindingHash`。
 
-`requires.role` 缺失时，不要假设所有实现都会自动使用 stage id 作为 binding key。需要稳定 runner binding 的 Flow 应显式写 role。
+dry-run 只生成计划；它不执行 stage，也不自动运行 Preflight。
 
-## 与相邻对象的边界
+### Preflight
 
-| 容易混淆 | 边界 |
+当前 Preflight 会：
+
+- 解析 Flow ref 及请求的 generation。
+- 解析 Flow 与 Run 合并后的 Profile/Policy refs。
+- 报告重复 stage id 和重复 lifecycle handler id。
+- 对 `requires` 按 role 查 Run binding，并检查 Skill/Adapter 是否提供 capability。
+- 对 `uses` 要求 workspace 中恰好有一个同名 Skill 或 Adapter；它只支持 dry-run 与诊断，execute mode 会产生 `LegacyUseNotLocked`。
+- 检查 Lifecycle Handler 的 stage selector、binding 和依赖。
+
+`requires.role` 在 schema 中可选，但缺失 role 无法找到锁定 binding，当前 Preflight 会产生 `BindingMissing`。可执行的 capability-first Flow 应显式写 role。
+
+## 验证边界
+
+- schema 不要求 stage id 唯一；当前 Preflight 会检查重复。
+- schema 不检查 input `from` 是否指向真实输出，也不检查 output name/type 兼容性。
+- 当前 Preflight 不解析 checkpoint 的 `before`/`after` 或 reason。
+- Flow 的 `status` 不保存运行进度；实际进度属于 Run。
+- 当前仓库没有 Flow executor 或 Lifecycle dispatcher。
+
+## 相邻概念边界
+
+| 容易混淆 | 精确边界 |
 | --- | --- |
-| `Flow` / `Run` | Flow 是可复用版式；Run 是一次执行的锁定快照。 |
-| `Flow` / `Skill` | Flow 引用 capability；Skill 提供 capability。 |
-| `Flow` / `Policy` | Flow 声明会用哪些 Policy；Policy 定义副作用规则。 |
-| `Flow` / `Checkpoint` | Flow 声明 checkpoint 位置；Checkpoint 对象记录一次具体停顿和决策。 |
-| `Flow` / `Artifact` | Flow 声明预期输出；Artifact 记录实际产物。 |
+| Flow / Run | Flow 是可复用版式；Run 锁定一次具体引用、binding 和 snapshot。 |
+| stage `requires` / Requirement | stage `requires` 是 capability+role；`requirements[]` 是实现对象的环境依赖。 |
+| Flow checkpoint / Checkpoint | Flow 声明位置；Checkpoint 顶层对象记录一次 Run 的具体决策边界。 |
+| Flow output / Artifact | output 声明预期类型；Artifact 记录实际产物或证据。 |
+| stage / Lifecycle Handler | stage 承载工作和状态改变；handler 只用于观察、上报和清理集成。 |
 
 ## 常见错误
 
-- 在 Flow 中写 shell command 或 CLI 参数。应进入 Adapter 或 runner-specific binding。
-- 永久绑定具体模型或 agent。Flow 应描述能力需求，Run 再绑定具体实现。
-- 把所有上下文塞进 stage。上下文应进入 Profile。
-- 把 checkpoint 当成普通注释。高判断力或高风险节点应显式声明。
-
-## 活字印刷位置
-
-Flow 对应“版式”。排版不是执行，排版决定哪些活字被选择、怎么排列、在哪里校对、印出什么。Flow 让 Huoban 可排版。
+- 在同一 stage 同时写 `requires` 和 `uses`，只因为 schema 可以通过。
+- 省略 `requires.role` 却期望 Run 自动按 stage id 绑定。
+- 把外部文件或可执行程序写进 stage `requires`；这些属于 Skill/Profile/Adapter 的 Requirement。
+- 把 shell command、模型参数或 runner 配置写入 Flow。
+- 声称 checkpoint 引用和 input/output 数据流已被当前 Preflight 验证。
+- 认为 dry-run 已经执行 stage 或证明环境就绪。

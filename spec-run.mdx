@@ -1,58 +1,75 @@
 ---
 title: "Run 对象"
 sidebarTitle: "Run"
-description: "Run 是 Huoban 的一次锁版印刷，冻结 Flow、Profile、Policy、binding 和快照。"
+description: "Run 的 Flow/Profile/Policy 引用、实现 binding、四类 snapshot hash、Preflight 与 lifecycle 状态。"
 ---
 
-# Run 对象
+`Run` 是 Huoban 的一次锁版印刷：它锁定某次计划使用的 Flow、Profile、Policy 和实现 binding，并承载工具观察到的状态。Run 可以表示 `explain`、`dryRun` 或 `execute` 计划；当前仓库不提供 execute runtime。
 
-`Run` 是一次具体执行或 dry-run 计划。它像锁版印刷：执行开始后，必须记录当时使用的 Flow、Profile、Policy、binding 和 snapshot，避免事后复盘被后续修改污染。
+设计背景见 [Run 模型](/run-model)，Preflight 状态见 [Preflight](/spec-preflight)。
 
-规范页定义 Run 的字段形状和验证边界。为什么需要 Run，请读 [Run 模型](/run-model)。
+## Spec 字段
 
-## 对象职责
+| 字段 | 要求 | Schema 语义 |
+| --- | --- | --- |
+| `spec.flowRef` | 必填 | local object reference。 |
+| `spec.profileRefs` | 可选 | local object reference 数组。 |
+| `spec.policyRefs` | 可选 | local object reference 数组。 |
+| `spec.mode` | 可选 | `explain`、`dryRun` 或 `execute`；schema 不声明默认值，reference CLI 与 Preflight 将省略值按 `execute` 处理。 |
+| `spec.bindings` | 可选 | role 到 implementation binding 的映射。 |
+| `spec.snapshot` | 可选 | 锁定信息对象；一旦存在，四个 hash 字段全部必填。 |
+| `spec.snapshot.flowSpecHash` | snapshot 存在时必填 | Flow `spec` 的 hash 字符串。 |
+| `spec.snapshot.profileRefHash` | snapshot 存在时必填 | 有效 Profile 引用列表的 hash 字符串。 |
+| `spec.snapshot.policyRefHash` | snapshot 存在时必填 | 有效 Policy 引用列表的 hash 字符串。 |
+| `spec.snapshot.bindingHash` | snapshot 存在时必填 | bindings 的 hash 字符串。 |
 
-Run 解决的问题是：AI 工作不能只留下聊天记录或最终 diff。一次工作必须有可复盘的执行对象，说明“用哪套版式、哪套墨方、哪些规则、哪些能力绑定”。
+这四个名称是当前 schema 的完整 snapshot 字段集，并统一使用 `sha256:<64 位小写十六进制>`。
 
-Run 负责描述：
+Huoban canonical JSON v1 的算法固定为：递归按 UTF-16 code unit 升序排列对象 key，保持数组顺序，使用 ECMAScript `JSON.stringify` 语义序列化，再对 UTF-8 bytes 做 SHA-256。不同实现必须使用相同算法；不能直接哈希 YAML、未排序 JSON 或平台相关文本。
 
-- 要执行或解释的 `flowRef`。
-- 本次追加或覆盖的 `profileRefs`。
-- 本次使用的 `policyRefs`。
-- capability role 到 Skill 或 Adapter 的 binding。
-- 本次执行的 mode。
-- Flow、Profile 和 binding 的 snapshot hash。
-- runtime 观察到的状态、stage、副作用和产物引用。
+## Implementation binding
 
-Run 不负责：
+每个 `spec.bindings.<role>` 的主目标必须且只能选择一种：
 
-- 定义可复用工作流；这属于 `Flow`。
-- 保存大段产物内容；这属于 `Artifact`。
-- 审批继续执行；这属于 `Checkpoint`。
-- 定义副作用规则；这属于 `Policy`。
+```yaml
+reviewer:
+  skillRef: design-review
+```
 
-## v1alpha1 字段
+或：
+
+```yaml
+reviewer:
+  adapterRef: grill-me-skill-md
+  fallback:
+    skillRef: design-review
+```
 
 | 字段 | 要求 | 说明 |
 | --- | --- | --- |
-| `spec.flowRef` | 必填 | 本次 Run 使用的 Flow 引用。 |
-| `spec.profileRefs` | 可选 | 本次 Run 追加或覆盖的 Profile 引用。 |
-| `spec.policyRefs` | 可选 | 本次 Run 使用的 Policy 引用。 |
-| `spec.mode` | 可选 | `explain`、`dryRun` 或 `execute`。 |
-| `spec.bindings` | 可选 | role 到 `skillRef`、`adapterRef` 或二者之一的映射。 |
-| `spec.snapshot.flowSpecHash` | 可选 | Flow spec hash。 |
-| `spec.snapshot.profileSpecHash` | 可选 | Profile 引用或 effective Profile 的 hash，具体算法由实现声明。 |
-| `spec.snapshot.skillBindingHash` | 可选 | binding hash。 |
-| `status.phase` | 可选 | runtime 观察到的阶段。 |
-| `status.currentStage` | 可选 | 当前 stage id。 |
-| `status.observedSideEffects` | 可选 | 实际观察到的副作用。 |
-| `status.artifacts` | 可选 | 实际产物引用。 |
+| `skillRef` | 与 `adapterRef` 二选一 | Skill 名称字符串。 |
+| `adapterRef` | 与 `skillRef` 二选一 | Adapter 名称字符串。 |
+| `fallback` | 可选 | implementation target。 |
+| `fallback.skillRef` | 与 fallback 的 `adapterRef` 二选一 | fallback Skill 名称。 |
+| `fallback.adapterRef` | 与 fallback 的 `skillRef` 二选一 | fallback Adapter 名称。 |
 
-`bindings` 的 key 通常对应 `Flow.stages[].requires.role`。binding value 必须至少包含 `skillRef` 或 `adapterRef`，且不能包含其他字段。
+主目标或 fallback 同时写两类 ref 会因 `oneOf` 失败。fallback 只存在于 Run binding；Adapter schema 没有 `spec.fallback`。
 
-当前 schema 允许同一个 binding 同时写 `skillRef` 和 `adapterRef`。为了互操作，推荐一个 binding 只写一种 ref。当前 CLI explain 会优先显示 `skillRef`，但这不是稳定标准语义；未来 workspace validator 可以把双写视为歧义并报错。
+## Status 字段
 
-## 最小合法示例
+Run 在通用 status 之外增加：
+
+| 字段 | 要求 | 说明 |
+| --- | --- | --- |
+| `status.currentStage` | 可选 | stage id 字符串。 |
+| `status.observedSideEffects` | 可选 | 实际观察到的副作用对象数组；每项必须有枚举内的 `type`，可有其他字段。 |
+| `status.artifacts` | 可选 | Artifact 引用数组。 |
+| `status.preflight` | 可选 | Preflight 摘要；存在时 `scope`、`snapshotHash`、`checkedAt`、`reportRef` 必填。 |
+| `status.lifecycleInvocations` | 可选 | Handler 调用状态数组，见 [Lifecycle Handler](/spec-lifecycle-handler#run-invocation-状态)。 |
+
+`status.phase`、`status.observedGeneration` 和 `status.conditions` 来自通用状态。除 lifecycle invocation 的 `phase` 外，schema 不为 Run phase 定义枚举。
+
+## 合法示例
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
@@ -62,7 +79,7 @@ metadata:
 spec:
   flowRef:
     name: idea-to-spec-review
-    generation: 1
+    generation: 2
   profileRefs:
     - name: huoban-open-source-project
       generation: 1
@@ -75,42 +92,62 @@ spec:
     spec-writer:
       skillRef: spec-outline-writer
   snapshot:
-    flowSpecHash: sha256:flow-placeholder
-    profileSpecHash: sha256:profile-placeholder
-    skillBindingHash: sha256:binding-placeholder
+    flowSpecHash: sha256:b7a80c75e7a8f3f0e043d78623e84a0bd70def9f50134657751bf5e27a5fece2
+    profileRefHash: sha256:d9ec168320ac8ea60d3aa5f049ce8a58bc0c625f1937d560c7e4b0d801f3d5d9
+    policyRefHash: sha256:745db2bbc095810039b9b13ef544ce49bd28e1f7474757cf256e27906fb65006
+    bindingHash: sha256:9d47cbf573e28dad7fd0080bdc96894a27ba85377421e4e34f3455cc58a5f01b
 ```
 
-参考 example：`examples/runs/idea-to-spec-review-run.yaml`。
+对应 source example：`examples/runs/idea-to-spec-review-run.yaml`。
 
-## 验证规则
+## 当前 CLI 行为
 
-validator 至少应检查：
+### 生成 dry-run
 
-- `kind` 必须是 `Run`。
-- `spec.flowRef.name` 必须存在。
-- `mode` 如果存在，只能是 `explain`、`dryRun` 或 `execute`。
-- 每个 binding 必须至少有 `skillRef` 或 `adapterRef`。
-- 推荐每个 binding 只写一种 ref；同时写两种 ref 时，workspace validator 应写入 ambiguity condition。
-- binding key 应能对应 Flow stage role；如果不能，写入 condition。
-- `status.observedSideEffects[].type` 只能使用标准 side effect。
-- `status.artifacts[]` 必须是 Artifact 引用形状。
+```bash
+npm exec -- huoban print --dry-run examples/flows/idea-to-spec-review.yaml \
+  --out runs/plan.yaml \
+  --bind primary-review=adapter:grill-me-skill-md \
+  --fallback primary-review=skill:design-review
+```
 
-## 与相邻对象的边界
+当前 parser 还支持可重复的 `--profile <name>` 与 `--policy <name>`。`--fallback` 只有在同一 role 已有 `--bind` 时才合法。
 
-| 容易混淆 | 边界 |
+生成器将 Flow `spec`、Profile refs、Policy refs 和 bindings 分别按 Huoban canonical JSON v1 序列化并做 SHA-256，写入四个 snapshot 字段。输出 phase 为 `Planned`，conditions 包含 `RunPlanned=True` 和 `FlowSnapshotCreated=True`。此命令只生成计划。
+
+### Preflight
+
+Preflight 会解析 `flowRef` 及 generation，将 Flow 默认 Profile/Policy refs 与 Run refs 按名称合并，并检查 role binding、capability、fallback 和可达依赖。fallback 是锁入 Run 的执行候选：它与主 binding 使用相同 requiredness，必须能力匹配并通过同一次 Preflight；reference CLI 不提供自动切换 runtime。
+
+Preflight 的 `snapshotHash` 与四个 `spec.snapshot.*` 字段不同：它直接哈希完整 `Run.spec`。详见 [Preflight](/spec-preflight#report-字段)。
+
+`mode: execute` 只有在 Run scope 的 required resolution/readiness 都为 `True` 时才通过当前 Preflight gate，并产生 `PreflightReady=True`。stage scope 的 `StagePreflightReady=True` 不能授权整次 Run。
+
+## 验证边界
+
+- `validate` 检查 binding 的严格二选一，但不解析目标对象或 capability。
+- Preflight 解析当前实现收集的 refs 与 bindings，但不执行 Flow、Policy 或 Checkpoint。
+- Run-scope 与 stage-scope Preflight 都会按当前解析结果重算并比对四个 `spec.snapshot.*` 字段；缺失或不匹配会产生 required `False`。
+- 报告的 `snapshotHash` 另行哈希完整 `Run.spec`，用于把证据绑定到本次 Run 声明。
+- Profile/Policy refs 在当前 Preflight 中按名称覆盖 Flow 默认引用；这不是通用 Profile merge DSL。
+- `status.artifacts` 只检查引用形状；当前 Preflight 不验证它们与 stage 的归属关系。
+- `PreflightReady=True` 不是 Policy 或 Trust 授权。
+
+## 相邻概念边界
+
+| 容易混淆 | 精确边界 |
 | --- | --- |
-| `Run` / `Flow` | Flow 是可复用版式；Run 是一次锁定执行。 |
-| `Run` / `Checkpoint` | Run 可以进入等待状态；Checkpoint 记录具体决策对象。 |
-| `Run` / `Artifact` | Run 引用产物；Artifact 保存产物元数据和内容引用。 |
-| `Run` / `Policy` | Run 使用 Policy；Policy 定义规则。 |
+| Run / Flow | Flow 是可复用版式；Run 锁定一次具体计划。 |
+| binding / Requirement | binding 选择 Skill/Adapter；Requirement 检查该实现的环境依赖。 |
+| snapshot / Preflight report | snapshot 锁定计划输入；report 记录某环境、某时刻的检查证据。 |
+| Run artifact refs / Artifact | Run 只引用；Artifact 保存类型、内容引用和证据。 |
+| Run condition / Checkpoint | condition 记录状态；Checkpoint 是具体决策对象。 |
 
 ## 常见错误
 
-- 在执行中悄悄切换到新 Flow 或新 Profile。应创建新 Run 或显式 resume。
-- 只有 `execute` 才创建 Run。`explain` 和 `dryRun` 也应该可记录为 Run。
-- 把实际副作用只留在日志里。应写入 `status.observedSideEffects`。
-- 把产物正文塞进 `status.artifacts`。这里只放引用。
-
-## 活字印刷位置
-
-Run 对应“锁版印刷”。版式、墨方、活字和规矩在一次印刷前被锁定；Run 让一次 AI 工作可印刷、可复盘。
+- 使用不存在的 `profileSpecHash`、`skillBindingHash` 或其他 snapshot 字段。
+- 在同一 binding 同时写 `skillRef` 与 `adapterRef`。
+- 把 fallback 写进 Adapter，而不是 Run binding。
+- 认为 dry-run 已经执行 stage 或做过 Preflight。
+- 用 stage scope 结果满足 execute 的 Run scope 门槛。
+- 把 `status.artifacts` 当作产物正文容器。

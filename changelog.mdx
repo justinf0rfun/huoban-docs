@@ -1,47 +1,73 @@
 ---
 title: "版本记录"
 sidebarTitle: "版本记录"
-description: "Huoban 的公开版本变更记录，当前记录 0.1.0-alpha.0 初始协议发布。"
+description: "Huoban v1alpha1 的未发布 Requirement、Preflight、Lifecycle 变更与 0.1.0-alpha.0 基线。"
 icon:
   name: "history"
   library: "lucide"
 ---
 
-# 版本记录
+Huoban 在协议处于 `v1alpha1` 期间采用早期 semantic versioning。未发布内容不等于已发布版本承诺。
 
-所有 Huoban 的重要变更都会记录在这里。
+## Unreleased
 
-项目在协议仍处于 `v1alpha1` 阶段时，遵循早期 semantic versioning。
+### Added
+
+- 嵌入 `Skill`、`Profile` 与 `Adapter` 的 `Requirement` 环境依赖契约。
+- Run scope 与 stage scope Preflight，并分别记录 resolution 和 readiness。
+- 结构化 Preflight Report Artifact、freshness evidence 与 Run conditions。
+- Flow Lifecycle Handler：有限事件、显式 delivery、role binding、timeout、bounded retry 与 invocation status。
+- Huoban canonical JSON v1 与严格 SHA-256 digest 格式，用于 Run snapshot、Preflight Report 和 object evidence。
+- offline-by-default dependency checks，以及 opt-in、只读的 MCP/context discovery。
+- local Requirement、MCP reporting Adapter、lifecycle binding 与 generated Preflight evidence 的 public examples。
+
+### Changed
+
+- Run snapshot 使用四个字段：`flowSpecHash`、`profileRefHash`、`policyRefHash`、`bindingHash`。
+- Run status 可以记录 Preflight summary 与 lifecycle invocation status。
+- Adapter 的 MCP tool source 同时要求 endpoint URL 与 tool name。
+- Artifact object content 可以承载由 schema 验证的协议 evidence。
+
+### Runtime boundary
+
+- Preflight 默认 offline；`--live` 不调用 MCP tool。
+- `execute` 要求 Run scope `PreflightReady=True`，但 Preflight 不是授权。
+- 当前没有 execute runtime 或 Lifecycle dispatcher。
+- Adapter locator 按 source type 封闭，MCP discovery 校验 JSON-RPC response id；Lifecycle invocation 与 Artifact hash 增加可审计约束。
 
 ## 0.1.0-alpha.0
 
 Initial protocol release.
 
-Added:
+### Added
 
-- Huoban design philosophy：可排版、可润墨、可印刷。
-- `v1alpha1` JSON Schemas for core objects。
-- Valid examples for `Skill`、`Profile`、`Flow`、`Run`、`Checkpoint`、`Policy`、`Adapter`、`Artifact`、`Registry` and `Trust`。
-- Minimal `huoban` CLI with `validate`、`explain`、`import`、`export`、`derive` and `print --dry-run`。
-- AI-native documentation entrypoint through `llms.txt`。
-- Standardization guidance for separating public protocol concepts from private company practice。
-- Visual protocol demos。
+- Huoban 活板设计哲学：可排版、可润墨、可印刷。
+- 10 个 core object kind 的 `v1alpha1` JSON Schema。
+- `Skill`、`Profile`、`Flow`、`Run`、`Checkpoint`、`Policy`、`Adapter`、`Artifact`、`Registry`、`Trust` 的 valid examples。
+- `validate`、`explain`、`import`、`export`、`derive` 与 `print --dry-run` CLI。
+- `llms.txt` AI-native 文档入口。
+- 公共协议与公司实践分离的标准化说明。
+- 协议视觉材料。
 
-## 验证发布内容
+## 验证当前内容
 
-当前 release 的核心验证命令：
+在 Huoban source repo 根目录运行：
 
 ```bash
 npm test
 npm run validate
 npm run explain
 npm run print:dry-run
+npm run preflight
 ```
 
-核心示例入口：
+关键 source tree 路径：
 
 ```text
 examples/flows/idea-to-spec-review.yaml
 examples/generated/idea-to-spec-review-dry-run.yaml
-examples/checkpoints/idea-to-spec-review-direction.yaml
+examples/generated/idea-to-spec-review-preflight-report.yaml
+examples/adapters/stage-reporting-mcp.yaml
 ```
+
+这些路径不是文档站链接；关键对象已内嵌在 [Preflight 与 Lifecycle](/example-preflight-lifecycle)。

@@ -94,7 +94,19 @@ observedSideEffects:
 - `Policy` 不保存 observed side effects。
 - `Run` 不复制 Policy 规则。
 
-当前 v1alpha1 的 `Run.snapshot` 没有 `policySpecHash`。完整冻结 Policy 内容需要未来字段或外部不可变存储；当前只能通过 `policyRefs` 和可选 generation 标识本次声明采用的 Policy。
+`Run.spec.snapshot.policyRefHash` 散列本次 `policyRefs` 列表，但不散列被引用 Policy 的完整内容。内容级不可变性仍需 generation、外部内容寻址存储或实现声明的额外证据。
+
+## 与 Preflight 的边界
+
+Preflight 检查并记录“当前环境是否具备执行条件”，Policy 判断“即使具备条件，这个行为是否允许”。
+
+| 问题 | 负责结构 |
+| --- | --- |
+| Skill / Adapter 能否解析、程序是否存在、MCP tool 是否可发现？ | `Requirement` + `Preflight` |
+| `networkAccess`、`sendMessage`、`publishRemote` 是否允许？ | `Policy` |
+| 需要审批时，这一次允许哪些决策动作？ | `Checkpoint` |
+
+当前 reference Preflight 只解析 Policy 引用，不执行 `Policy.spec.rules`。`PreflightReady=True` 不是授权；实现不能因为依赖已就绪而跳过 Policy、Trust 或 Checkpoint。
 
 ## 与 Trust 的边界
 
@@ -120,6 +132,8 @@ observedSideEffects:
 | `Checkpoint` | 承载 requireApproval 后的一次具体判断请求。 |
 
 如果 observed side effects 超出 declared side effects，应进入 `Run.status.observedSideEffects` 和 condition，例如 `UndeclaredSideEffectObserved`，并可能触发 `Checkpoint`。
+
+Lifecycle Handler 的 provider 也遵守同一规则。stage 成功后上报通常声明 `networkAccess`、`sendMessage`；即使 handler 是 `bestEffort` 且 Preflight 可解析，实际投递仍不能绕过 Policy 和 Trust。
 
 ## 不是命令黑名单
 

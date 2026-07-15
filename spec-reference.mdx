@@ -1,134 +1,130 @@
 ---
 title: "规范参考总览"
 sidebarTitle: "总览"
-description: "Huoban v1alpha1 对象规范的入口：资源外壳、对象族、验证路径、阅读顺序和承诺边界。"
+description: "Huoban v1alpha1 的资源外壳、10 个顶层 kind、共享执行契约与当前验证边界。"
 ---
 
-# 规范参考总览
+Huoban 是 AI 系统的开放编排协议：可排版、可润墨、可印刷。
 
-规范参考面向实现者、Adapter 作者、validator 作者、runner binding 作者和 registry tooling 作者。它不重复解释 Huoban 为什么存在；模型页解释设计原因，规范页定义对象形状、字段语义和验证边界。
+本节记录 `huoban.dev/v1alpha1` 已由 JSON Schema、examples 和 CLI 实现的协议表面。字段形状以 `schemas/v1alpha1/*.schema.json` 为准；CLI 行为以 `bin/huoban.js` 和 `lib/preflight.js` 为准。
 
-当前规范版本是 `huoban.dev/v1alpha1`。当 prose 与 JSON Schema 冲突时，以 schema 为准；当 schema 与 example 冲突时，先修 example 或 schema，再更新文档。
+当前 `v1alpha1` 仍是同版本内直接修订的草案，尚无需要兼容的既有用户。不要据此声称旧 reader 能前向兼容后续修订。
 
 ## 资源外壳
 
-所有 Huoban 对象共享同一外壳：
+10 个顶层 kind 都使用同一外壳：
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
-kind: Flow
+kind: Skill
 metadata:
-  name: idea-to-spec-review
+  name: design-review
 spec:
-  ...
-status:
-  ...
+  capabilities:
+    - huoban.dev/designReview
+  sideEffects:
+    declared: []
 ```
 
-| 字段 | v1alpha1 要求 | 语义 |
+| 字段 | 要求 | Schema 语义 |
 | --- | --- | --- |
-| `apiVersion` | 必填，固定为 `huoban.dev/v1alpha1` | 选择 schema 版本。 |
-| `kind` | 必填，固定为对象类型 | 选择对象 schema，例如 `Skill`、`Flow`、`Run`。 |
-| `metadata` | 必填 | 对象身份和元数据。 |
-| `metadata.name` | 必填 | 本地对象名，必须匹配 `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`。 |
-| `metadata.labels` | 可选 | 机器可读分类标签。 |
-| `metadata.annotations` | 可选 | 非核心元数据。 |
-| `metadata.generation` | 可选，整数且大于等于 1 | `spec` 发生语义变化时递增。 |
-| `spec` | 必填 | 作者声明的期望对象形状。 |
-| `status` | 可选 | runtime、validator 或 tooling 观察到的事实。 |
+| `apiVersion` | 必填 | 固定为 `huoban.dev/v1alpha1`。 |
+| `kind` | 必填 | 固定为当前对象的 kind。 |
+| `metadata` | 必填 | 对象元数据；不允许未声明字段。 |
+| `metadata.name` | 必填 | 匹配 `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`。 |
+| `metadata.labels` | 可选 | string 到 string 的映射。 |
+| `metadata.annotations` | 可选 | string 到 string 的映射。 |
+| `metadata.generation` | 可选 | 大于等于 1 的整数。 |
+| `spec` | 必填 | kind 特定的声明内容。 |
+| `status` | 可选 | 通用状态，并可由 kind schema 增加字段。 |
+| `status.phase` | 可选 | 字符串；通用 schema 不限定枚举。 |
+| `status.observedGeneration` | 可选 | 大于等于 1 的整数。 |
+| `status.conditions` | 可选 | condition 数组。 |
 
-`spec` 是声明，`status` 是事实。不要把运行日志、产物正文、临时 prompt 或工具输出塞进 `spec`；这些应该进入 `status.conditions`、`Run.status`、`Artifact` 或外部 `contentRef`。
+每个 condition 必须包含 `type`、`status` 和 `reason`。`status` 只能是 `"True"`、`"False"` 或 `Unknown`；`message` 与 `lastTransitionTime` 是可选字符串，schema 不校验时间格式。
 
-## 对象族
+## 引用形状
 
-Huoban v1alpha1 的对象族是最小开放编排语言：
-
-| 对象 | 隐喻 | 解决的问题 | 规范 |
+| 结构 | 必填字段 | 可选字段 | 使用位置 |
 | --- | --- | --- | --- |
-| `Skill` | 活字 | 声明可复用 capability、输入、输出和副作用。 | [Skill](/spec-skill) |
-| `Profile` | 墨方 | 把上下文变成可分层、可导入、可审查的对象。 | [Profile](/spec-profile) |
-| `Flow` | 版式 | 按 capability-first 排列阶段、校对点和产物。 | [Flow](/spec-flow) |
-| `Run` | 锁版印刷 | 锁定一次执行使用的 Flow、Profile、Policy 和 binding。 | [Run](/spec-run) |
-| `Checkpoint` | 校对 | 把继续、修改或拒绝变成显式决策对象。 | [Checkpoint](/spec-checkpoint) |
-| `Policy` | 印坊规矩 | 声明副作用、审批和权限边界。 | [Policy](/spec-policy) |
-| `Adapter` | 异形活字转接件 | 把外部 skill、MCP tool、规则文件或本地工具标准化。 | [Adapter](/spec-adapter) |
-| `Artifact` | 印张 | 记录一次 Run 产生的产物、引用、hash 和审查状态。 | [Artifact](/spec-artifact) |
-| `Registry` | 字架 | 组织、索引和发现 Huoban 对象来源。 | [Registry](/spec-registry) |
-| `Trust` | 来源信任记录 | 记录对象来源、审查、签名、sandbox 和信任等级。 | [Trust](/spec-trust) |
+| local object reference | `name` | `kind`、`generation` | `flowRef`、`profileRefs`、`policyRefs`、`runRef` 等。 |
+| typed object reference | `kind`、`name` | `generation` | `Trust.spec.subjectRef`、`Requirement.target`、Preflight check 的 `ownerRef`。 |
+| artifact reference | `name` | `kind`，若存在只能为 `Artifact` | Checkpoint 和 Run 状态中的产物引用。 |
 
-## 验证路径
+引用结构只描述形状。普通 `validate` 不解析目标；当前 Preflight 只解析其实现明确收集到的引用。
 
-验证分三层，不要把当前 CLI 已实现能力和长期互操作目标混在一起。
+## Digest 形状
 
-### Schema validation
+所有协议 digest 使用 `sha256:<64 位小写十六进制>`。对象 digest 使用 Huoban canonical JSON v1：对象 key 按 UTF-16 code unit 升序递归排列、数组顺序保持、按 ECMAScript `JSON.stringify` 语义序列化为 UTF-8，再计算 SHA-256。file-backed Artifact 直接哈希原始文件 bytes。
 
-`npm run validate` 当前做的是 schema validation：
+## 10 个顶层 kind
 
-1. 解析 YAML。
-2. 根据 `apiVersion` 和 `kind` 选择 schema。
-3. 校验资源外壳：`apiVersion`、`kind`、`metadata`、`spec`。
-4. 校验对象 schema：必填字段、枚举、数组、引用形状、`additionalProperties`。
+| Kind | 职责 | 规范 |
+| --- | --- | --- |
+| `Skill` | 声明原子 capability、输入输出、外部依赖与副作用。 | [Skill](/spec-skill) |
+| `Profile` | 声明分层上下文及其外部依赖。 | [Profile](/spec-profile) |
+| `Flow` | 声明 capability-first stage、checkpoint 和 lifecycle handler。 | [Flow](/spec-flow) |
+| `Run` | 锁定 Flow 引用、上下文、策略、实现绑定和快照。 | [Run](/spec-run) |
+| `Checkpoint` | 记录一次 Run 的具体决策边界。 | [Checkpoint](/spec-checkpoint) |
+| `Policy` | 声明副作用、审批和权限规则。 | [Policy](/spec-policy) |
+| `Adapter` | 标准化导入格式或外部能力。 | [Adapter](/spec-adapter) |
+| `Artifact` | 保存产物或协议证据的元数据与内容引用。 | [Artifact](/spec-artifact) |
+| `Registry` | 声明对象来源与索引范围。 | [Registry](/spec-registry) |
+| `Trust` | 记录来源、审查、签名与隔离要求。 | [Trust](/spec-trust) |
 
-这一步不承诺完整对象关系校验、Policy 覆盖校验或 runner binding 校验。
+## 共享执行契约
 
-### Current CLI coverage
+以下结构有独立 fragment schema，但不是顶层 kind：
 
-当前仓库的可运行命令是：
+| 结构 | 所属位置 | 规范 |
+| --- | --- | --- |
+| `Requirement` | `Skill.spec.requirements[]`、`Profile.spec.requirements[]`、`Adapter.spec.requirements[]` | [Requirement](/spec-requirement) |
+| Preflight Report | `Artifact.spec.contentRef.data`，且 Artifact type 为 `huoban.dev/preflight-report` | [Preflight](/spec-preflight) |
+| Lifecycle Handler | `Flow.spec.lifecycle[]` | [Lifecycle Handler](/spec-lifecycle-handler) |
+| Lifecycle Event Envelope | 供 lifecycle 事件使用的共享 fragment | [Lifecycle Handler](/spec-lifecycle-handler#lifecycle-event-envelope) |
+
+把这些结构写成 `kind: Requirement`、`kind: PreflightReport` 或 `kind: LifecycleHandler` 会失败，因为 CLI 找不到对应的顶层 schema。
+
+## 当前验证边界
+
+| 路径 | 已实现 | 未实现 |
+| --- | --- | --- |
+| `huoban validate` | 解析 YAML/JSON；按 `apiVersion`/`kind` 校验顶层对象，也可校验 Lifecycle Event Envelope fragment；file-backed Artifact 与 Preflight Report 额外验证内容 hash。 | 不解析对象引用，不检查 capability binding，不执行 Policy。 |
+| `huoban explain` | 输出对象或 workspace 摘要，并报告一部分缺失引用。 | 不先做 schema validation，也不是完整关系校验。 |
+| `huoban print --dry-run` | 从一个 Flow 生成 `mode: dryRun` 的 Run 计划与四类 snapshot hash。 | 不执行 stage，不做 Preflight，不调用外部能力。 |
+| `huoban preflight` | 先校验 Run/workspace 对象，再检查可达引用、binding、Requirement 和当前环境就绪性。 | 不执行 Flow，不调用 MCP tool，不评估 Policy 规则或 Trust 授权。 |
+| import/export/derive | Markdown 到 Profile、Profile 到 `AGENTS.md`、Profile risk layer 到 Policy。 | 生成结果不能跳过 review；这些命令不是通用转换 runtime。 |
+
+完整命令和可验证范围见 [兼容与验证](/conformance)。
+
+## 合法示例
+
+上面的最小 `Skill` 是完整、合法的顶层对象。即使没有副作用，也必须保留必填的 `sideEffects.declared: []`。
+
+仓库中的组合示例以 `examples/**/*.yaml` 为准。运行：
 
 ```bash
 npm run validate
 npm run explain
 npm run print:dry-run
+npm run preflight
 ```
 
-`npm run explain` 会做 workspace 级解释，并包含当前 examples 的引用检查；`npm run print:dry-run` 会从 Flow 生成 dry-run Run。它们是当前 tooling 覆盖，不等同于完整 conformance suite。
+## 相邻概念边界
 
-### Workspace validation target
+| 容易混淆 | 精确边界 |
+| --- | --- |
+| `spec` / `status` | `spec` 是对象声明；`status` 是工具或执行环境观察到的状态。 |
+| schema validation / Preflight | schema 检查对象形状；Preflight 检查锁定 Run 在目标环境中的机械就绪性。 |
+| dry-run / Preflight | dry-run 只生成计划；Preflight 对计划做机械检查。二者都不执行 stage。 |
+| Preflight / Policy 与 Trust | `PreflightReady=True` 只表示依赖就绪，不表示权限或信任授权。 |
+| kind / fragment | kind 有完整资源外壳；fragment 只能嵌入 schema 指定的位置。 |
 
-完整实现应继续检查：
+## 常见错误
 
-1. 对象关系：例如 `Flow.profileRefs` 是否能解析到 `Profile`，`Run.bindings` 是否能绑定 stage role。
-2. 执行边界：例如 `Skill.sideEffects`、`Adapter.sideEffects` 是否被 `Policy` 覆盖。
-3. 产物链路：例如 `Checkpoint.artifactRefs` 是否能解析到本次 Run 的 `Artifact`。
-4. conditions 输出：无法解析或存在歧义时写入 condition，不要静默修正对象。
-
-这些属于 workspace validation target；v1alpha1 schema 本身不全部强制。
-
-文档站点自身应通过：
-
-```bash
-npx mintlify validate
-```
-
-## 阅读顺序
-
-如果你要实现 validator，从 [Skill](/spec-skill)、[Profile](/spec-profile)、[Policy](/spec-policy) 开始，再读 [Flow](/spec-flow)、[Run](/spec-run)、[Checkpoint](/spec-checkpoint)、[Artifact](/spec-artifact)。
-
-如果你要实现外部生态导入，从 [Adapter](/spec-adapter)、[Trust](/spec-trust)、[Registry](/spec-registry) 开始。
-
-如果你要实现 runner binding，先读 [Flow](/spec-flow) 和 [Run](/spec-run)，再读 [Policy](/spec-policy)、[Checkpoint](/spec-checkpoint) 和 [Artifact](/spec-artifact)。
-
-## v1alpha1 承诺
-
-v1alpha1 承诺的是对象边界和可验证字段，不承诺完整 runtime。
-
-<CardGroup cols={2}>
-  <Card title="已经承诺" icon="shield-check" type="tip" color="#16A34A">
-    资源外壳、10 个对象 kind、schema 字段、最小 examples、validate/explain/print dry-run 路径。
-  </Card>
-  <Card title="尚不承诺" icon="boxes" type="tip" color="#16A34A">
-    hosted registry、marketplace、完整 runner、visual builder、通用 eval DSL、跨组织分发策略。
-  </Card>
-</CardGroup>
-
-未出现在 `schemas/v1alpha1/*.schema.json` 中的字段，不属于 v1alpha1 承诺。文档可以讨论未来方向，但必须明确标为非 v1alpha1 承诺。
-
-## 常见实现错误
-
-| 错误 | 为什么不对 | 正确做法 |
-| --- | --- | --- |
-| 把 `Flow` 写成脚本 | Flow 声明版式，不绑定 runner 或 shell。 | 用 `Flow` 声明 capability、stage、checkpoint 和 artifact；执行绑定进入 `Run.bindings` 或 Adapter。 |
-| 把 AGENTS.md 直接当作可信 Skill | Markdown 指令没有稳定 capability、输出和副作用边界。 | 上下文导入为 `Profile`，能力类来源导入为 `Adapter` 并经过 review。 |
-| 把权限写进 Profile | Profile 改变判断标准，不控制副作用。 | 用 `Policy` 声明副作用、审批和权限边界。 |
-| 把产物正文塞进 Run | Run 是执行快照，不是内容仓库。 | 用 `Artifact.contentRef` 引用文件、URL、git blob 或对象。 |
-| 把 Trust 当作 allow/deny | Trust 描述来源和审查，不是执行授权。 | Trust 供 Policy 和 runtime 判断；执行边界仍由 `Policy` 声明。 |
+- 发明 schema 中不存在的字段，或把开放状态字段误写进 `spec`。
+- 把 Requirement、Preflight Report 或 Lifecycle Handler 增加为第 11 个 kind。
+- 认为引用形状合法就代表引用目标存在。
+- 把 stage scope 的 `StagePreflightReady=True` 当成整次 Run 的执行门槛。
+- 把 `PreflightReady=True` 当成 Policy allow 或 Trust trusted。
+- 声称当前仓库有 Flow executor、Lifecycle dispatcher 或 Policy enforcement runtime。

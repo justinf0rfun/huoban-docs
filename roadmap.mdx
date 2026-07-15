@@ -1,170 +1,127 @@
 ---
 title: "路线图"
 sidebarTitle: "路线图"
-description: "Huoban 从文档、对象模型、schema 到 reference runtime 的阶段路线。"
+description: "Huoban 当前已实现的协议面、尚未实现的 runtime 面，以及推进标准的证据门槛。"
 ---
 
-# 路线图
+Huoban 是 standard-first、runtime-later。路线图按可验证能力与进入条件描述，不承诺发布日期。
 
-Huoban 当前阶段的重点不是快速写 runtime，而是先建立清晰、专业、可传播的标准语言。
+## 当前基线
 
-## 当前阶段：官方文档
+当前 package 版本是 `0.1.0-alpha.0`，公共 API 版本是 `huoban.dev/v1alpha1`。
 
-目标：把 Huoban 的公开叙事和标准边界讲清楚。
+已经存在并可本地验证：
 
-交付物：
+- 10 个顶层 kind 的 JSON Schema。
+- 18 个 public YAML objects。
+- `validate` 与 `explain`。
+- 通用 Markdown `import --as Profile`。
+- `export --to AGENTS.md`。
+- 从 Profile risk layer `derive policy`。
+- `print --dry-run` 与 Run snapshot hashes。
+- Run scope / stage scope Preflight。
+- offline-by-default checks 与 opt-in `--live` discovery。
+- Preflight Report Artifact。
+- Requirement、Lifecycle Handler 与 lifecycle invocation status 的协议形状。
 
-- 项目首页。
-- 快速开始。
-- 愿景与开源策略。
-- 设计哲学。
-- 对象模型。
-- Profile / Flow 模型。
-- 迁移指南。
-- 兼容等级。
-- 信任模型。
+Requirement、Preflight 和 Lifecycle 不是新增 kind。
 
-成功标准：陌生开发者能在 10 分钟内理解 Huoban 不是 runner，而是 AI 原生工作的对象模型和开放编排协议。
+## 当前没有实现
 
-## Phase 0：Spec 与示例
+| 能力 | 当前状态 |
+| --- | --- |
+| Flow / Adapter / Skill execution | 未实现。 |
+| `execute` CLI | 未实现。 |
+| Lifecycle dispatcher | 未实现。 |
+| Policy enforcement / approval engine | 未实现。 |
+| Checkpoint resolution runtime | 未实现。 |
+| sandbox implementation | 未实现。 |
+| hosted registry / marketplace | 未实现。 |
+| Cursor directory parser | 未实现。 |
+| `SKILL.md -> Adapter` import | 未实现。 |
+| CLAUDE.md / Cursor Rules export | 未实现。 |
 
-目标：建立最小标准仓库骨架。
+不要用 authored status example 暗示这些 runtime 已存在。
 
-建议结构：
+## 当前工作重点
 
-```text
-README.md
-HUOBAN_DESIGN_PHILOSOPHY.md
-docs/
-spec/
-schemas/
-examples/
-```
+### 1. 固化执行前契约
 
-交付物：
+目标：让不同实现对同一个 Run 得到可比较的准备结论。
 
-- `spec/v1alpha1/` 文档。
-- `schemas/v1alpha1/*.schema.json`。
-- `examples/idea-to-spec-review/`。
-- `examples/profile-import/`。
-- `docs/trust-model.md`。
-- `docs/conformance.md`。
+验收条件：
 
-暂不做完整 runtime。
+- Requirement 形状稳定且有真实 Skill/Profile/Adapter examples。
+- resolution 与 readiness 始终分开。
+- `Run.spec` hash、scope 和 freshness evidence 可审查。
+- stage scope 不被误用为 Run 授权。
+- `--live` discovery 保持只读、有界且不调用 MCP tool。
 
-## Phase 1：Validator 与 Import/Export
+### 2. 验证 Lifecycle 声明
 
-目标：让用户可以把已有上下文资产带入 Huoban。
+目标：验证有限事件、role binding、delivery、timeout 和 retry 能覆盖真实的观察、上报和清理场景。
 
-优先命令：
+验收条件：
+
+- event 继续使用有限枚举，不接受任意 hook string。
+- handler 外部能力通过 Adapter 表达。
+- business state、decision 与 permission 不进入 handler。
+- 至少有重复真实 workflow 证据后才扩展公共语义。
+
+### 3. 扩大可复现迁移
+
+目标：基于 fixture 与 golden output 增加迁移能力，而不是先写承诺。
+
+候选工作必须同时提供：
+
+- 输入 fixture。
+- schema-valid output。
+- review conditions。
+- round-trip 或不可 round-trip 的明确边界。
+- CLI behavior tests。
+
+这适用于 CLAUDE.md、Cursor Rules 与 SKILL.md Adapter import。
+
+## runtime 进入条件
+
+reference runtime 只有在以下条件成立后才值得推进：
+
+- Flow、Run、Policy、Trust、Checkpoint 与 Artifact 的边界经过多个真实 workflow 验证。
+- `execute` 前置条件明确要求 Run scope `PreflightReady=True`。
+- authorization 与 readiness 不混淆。
+- capability binding 与 fallback 语义稳定。
+- lifecycle event delivery 与 status 语义有实现测试。
+- sandbox 和平台权限边界可以被明确声明与审计。
+
+runtime 不应通过增加隐藏 prompt 逻辑绕开协议对象。
+
+## 标准提升门槛
+
+公共字段或能力进入核心标准前，应满足：
+
+- 在重复真实 workflow 中出现。
+- 不绑定单一公司、仓库、agent 或 runner。
+- 可以被 schema 验证。
+- 有 public example。
+- 可以被 CLI 解释。
+- 提升互操作性。
+
+没有重复证据的实践继续留在私有 `Profile`、`Policy`、`Adapter`、`Flow` 和 `Run` 中。
+
+## 不提前建设
+
+- hosted marketplace。
+- hosted trust scoring。
+- 大而全 workflow builder。
+- 在 trust、Preflight 和 Policy 边界不清晰时执行任意外部能力。
+- 只有 prose、没有 schema/example/test 的标准声明。
+
+当前进度可通过以下命令核验：
 
 ```bash
-huoban validate
-huoban explain
-huoban import
-huoban export
+npm test
+npm run validate
+npm run explain
+npm run print:dry-run
+npm run preflight
 ```
-
-优先用例：
-
-- `AGENTS.md -> Profile`
-- `CLAUDE.md -> Profile`
-- `Cursor Rules -> Profile`
-- `SKILL.md -> Adapter`
-
-成功标准：外部用户开始提交 Profile、Adapter、Flow examples。
-
-## Phase 2：Dry-run 与 Reference Runtime
-
-目标：证明 Huoban 对象可以被解释成一次可审计的 AI 工作计划。
-
-优先命令：
-
-```bash
-huoban print --dry-run
-```
-
-交付物：
-
-- Run snapshot 生成。
-- Profile 合并解释。
-- Policy 预检查。
-- Checkpoint 计划。
-- Artifact 计划。
-- Conditions 输出。
-
-仍然不急着执行任意 agent workflow。
-
-## Phase 3：MCP Integration
-
-目标：让 Huoban 对象可以被 agent 工具链读取和调用。
-
-交付物：
-
-- Huoban MCP server。
-- Huoban MCP resources。
-- Validate / explain / import / export tools。
-- Profile / Flow / Run 查询。
-- Adapter import for MCP tools。
-
-成功标准：不同 agent 可以通过 MCP 理解同一套 Huoban 对象。
-
-## Phase 4：Runtime 与 Registry
-
-目标：提供可执行 runtime 和本地 registry。
-
-交付物：
-
-- Flow execution。
-- Capability binding。
-- Adapter execution。
-- Policy enforcement。
-- Checkpoint handling。
-- Artifact tracking。
-- Local registry。
-
-不建议过早建设 hosted marketplace。
-
-## Phase 5：生态与治理
-
-目标：让 Huoban 从工具变成生态标准。
-
-重点：
-
-- 第三方 Adapter。
-- 第三方 validator。
-- 第三方 runtime。
-- 社区 capability taxonomy 讨论。
-- Conformance test suite。
-- Spec 版本治理。
-- Trust / signature / provenance 机制。
-
-## 早期不做
-
-为了保持方向清晰，早期不做：
-
-- 大而全 hosted registry。
-- Skill marketplace。
-- 完整 agent runner 平台。
-- 私有 SaaS 控制台。
-- 自动生成所有 flow 的一键魔法。
-- 绑定单一 agent 生态。
-
-## North-star metric
-
-早期最重要的指标不是 star 数，也不是下载量。
-
-更好的指标是：
-
-> Number of external Huoban objects authored by non-core contributors.
-
-包括：
-
-- 外部 `Profile`。
-- 外部 `Flow`。
-- 外部 `Skill` spec。
-- 外部 `Adapter`。
-- 第三方 validator / runtime 实验。
-- 围绕对象边界的 issue 和 PR。
-
-这说明 Huoban 正在成为语言，而不只是工具。

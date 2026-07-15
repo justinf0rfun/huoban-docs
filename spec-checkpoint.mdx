@@ -1,52 +1,28 @@
 ---
 title: "Checkpoint 对象"
 sidebarTitle: "Checkpoint"
-description: "Checkpoint 是 Huoban 的校对对象，用于记录一次 Run 中需要批准、修改或拒绝的决策边界。"
+description: "Checkpoint 的 Run/stage 关联、决策动作、Artifact 引用、过期字段与当前无决策 runtime 的边界。"
 ---
 
-# Checkpoint 对象
+`Checkpoint` 是 Huoban 的校对对象：它把一次具体 Run 中的人类或系统决策边界记录为独立资源。Flow 可以声明 checkpoint 位置；Checkpoint 对象记录实例。
 
-`Checkpoint` 是 Huoban 的校对点。它表示 runtime 不能或不应该继续自动执行，需要人、规则或 eval 给出明确结果。
+设计背景见 [Checkpoint 模型](/checkpoint-model)。
 
-规范页定义 Checkpoint 的字段形状和验证边界。为什么 checkpoint 是信任边界，请读 [Checkpoint 模型](/checkpoint-model)。
+## 字段
 
-## 对象职责
-
-Checkpoint 解决的问题是：高风险或高判断力节点不能只靠聊天里的“可以继续”。它必须成为对象，绑定 Run、stage、reason、允许动作和待审查产物。
-
-Checkpoint 负责描述：
-
-- 对应哪个 Run。
-- 发生在哪个 stage。
-- 为什么暂停。
-- 允许哪些决策动作。
-- 审查哪些 Artifact。
-- 是否有过期时间。
-- 决策状态。
-
-Checkpoint 不负责：
-
-- 声明所有 checkpoint 位置；这属于 `Flow.checkpoints`。
-- 定义权限规则；这属于 `Policy`。
-- 保存产物正文；这属于 `Artifact`。
-- 替代人工判断；它只是把判断边界对象化。
-
-## v1alpha1 字段
-
-| 字段 | 要求 | 说明 |
+| 字段 | 要求 | Schema 语义 |
 | --- | --- | --- |
-| `spec.runRef` | 必填 | 对应的 Run 引用。 |
-| `spec.stage` | 可选 | 对应 stage id。 |
-| `spec.reason` | 必填 | 触发原因。 |
-| `spec.requiredActions` | 可选 | 允许动作：`approve`、`requestChanges`、`reject`。 |
-| `spec.artifactRefs` | 可选 | 待审查 Artifact 引用。 |
-| `spec.expiresAt` | 可选 | 过期时间字符串。 |
-| `status.phase` | 可选 | `Pending`、`Approved`、`Rejected` 等实现侧状态。 |
-| `status.conditions` | 可选 | 细粒度状态。 |
+| `spec.runRef` | 必填 | local object reference。 |
+| `spec.stage` | 可选 | stage id 字符串。 |
+| `spec.reason` | 必填 | 原因字符串。 |
+| `spec.requiredActions` | 可选 | 不重复的动作数组；可以为空。 |
+| `spec.artifactRefs` | 可选 | Artifact 引用数组。 |
+| `spec.expiresAt` | 可选 | 字符串；schema 不校验日期时间格式。 |
+| `status` | 可选 | 通用状态；`phase` 是未限定枚举的字符串。 |
 
-`requiredActions` 是允许动作列表，不是最终决策。最终决策应进入 `status.phase` 或 condition，并同步到相关 Run 状态。
+`requiredActions` 只能包含 `approve`、`requestChanges`、`reject`。它表达可用动作，不表达最终决策。
 
-## 最小合法示例
+## 合法示例
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
@@ -64,37 +40,48 @@ spec:
     - reject
   artifactRefs:
     - name: review-notes
+status:
+  phase: Pending
+  conditions:
+    - type: CheckpointRequired
+      status: "True"
+      reason: HumanDesignDecisionRequired
 ```
 
-参考 example：`examples/checkpoints/idea-to-spec-review-direction.yaml`。
+对应 source example：`examples/checkpoints/idea-to-spec-review-direction.yaml`。
 
-## 验证规则
+## 当前 CLI 行为
 
-validator 至少应检查：
+- `validate` 检查对象形状、动作枚举和 Artifact 引用形状。
+- `explain` 输出 `runRef`、stage、reason、required actions、Artifact refs 和通用 conditions。
+- 当前 Preflight 不收集独立 Checkpoint 对象，不解析其 `runRef`、stage 或 Artifact refs。
+- Lifecycle schema 提供 `checkpoint.requested` 与 `checkpoint.resolved` 事件名，但当前仓库没有 dispatcher。
 
-- `kind` 必须是 `Checkpoint`。
-- `spec.runRef.name` 必须存在。
-- `spec.reason` 必须存在。
-- `requiredActions` 只能包含 `approve`、`requestChanges`、`reject`，且不能重复。
-- `artifactRefs[]` 必须是 Artifact 引用形状。
-- 如果 `stage` 存在，workspace validator 应确认它能解析到对应 Run 的 Flow stage。
+当前仓库不创建、解决或执行 Checkpoint，也不把某个 status phase 自动同步到 Run。
 
-## 与相邻对象的边界
+## 验证边界
 
-| 容易混淆 | 边界 |
+- local `runRef` schema 只要求 `name`；它不会强制 `kind: Run` 或目标存在。
+- schema 不检查 `stage` 是否属于 Run 引用的 Flow。
+- schema 不检查 Artifact 是否来自同一 Run 或 stage。
+- schema 不定义 `status.phase` 的 Pending/Approved/Rejected 状态机。
+- `expiresAt` 只验证为字符串，不检查过期行为。
+
+## 相邻概念边界
+
+| 容易混淆 | 精确边界 |
 | --- | --- |
-| `Checkpoint` / `Flow.checkpoints` | Flow 声明可能停在哪里；Checkpoint 对象记录一次具体停顿。 |
-| `Checkpoint` / `Policy` | Policy 可以要求审批；Checkpoint 承载审批实例。 |
-| `Checkpoint` / `Artifact.review` | Checkpoint 是决策边界；Artifact.review 是产物审查状态。 |
-| `Checkpoint` / `Run.status` | Run 可以显示等待 checkpoint；Checkpoint 保存决策对象。 |
+| Flow checkpoint 声明 | 描述版式中可能在何处停下。 |
+| Checkpoint 对象 | 记录某个 Run 的具体决策边界。 |
+| Policy `requireApproval` | 声明需要审批的规则；Checkpoint 承载具体决策实例。 |
+| Artifact review | 记录产物审查状态；不等于继续执行的决策。 |
+| Preflight | 检查机械就绪性；不批准 Checkpoint。 |
 
 ## 常见错误
 
-- 只在聊天里同意继续，不创建 Checkpoint。这样 Run 无法审计。
-- 在 Checkpoint 里写权限规则。权限应写在 Policy。
-- 审查对象没有 Artifact 引用。高判断力产物应先成为 Artifact。
-- 允许动作太宽泛。v1alpha1 只标准化三种动作。
-
-## 活字印刷位置
-
-Checkpoint 对应“校对”。印前、印中或付印前的关键判断必须显式留下校对记录；Checkpoint 让 Huoban 可控地试印和修版。
+- 把 `requiredActions` 当成已经发生的 action。
+- 发明 schema 未定义的 `decision` 或 `resolvedBy` spec 字段。
+- 声称当前 CLI 会验证 stage、Run、Artifact 的关系。
+- 用 `PreflightReady=True` 替代 Checkpoint 审批。
+- 把 Policy 规则内联到 Checkpoint。
+- 假设 `expiresAt` 已由 runtime 强制执行。

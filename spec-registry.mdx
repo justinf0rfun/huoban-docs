@@ -1,50 +1,31 @@
 ---
 title: "Registry 对象"
 sidebarTitle: "Registry"
-description: "Registry 是 Huoban 的字架对象，用于组织、索引和发现 Skill、Adapter、Flow、Profile 等对象来源。"
+description: "Registry 的 local/git/http/mcp 来源、索引范围、Trust Policy 引用和当前仅校验与解释的实现边界。"
 ---
 
-# Registry 对象
+`Registry` 是 Huoban 的字架：它声明对象来源和索引范围。当前 v1alpha1 定义 Registry 对象形状，但 source repo 没有 Registry loader、远程 discovery 或 hosted registry runtime。
 
-`Registry` 是 Huoban 的字架：它组织、索引和发现可复用对象来源。
+设计背景见 [Registry 模型](/registry-model)。
 
-规范页定义 Registry 的字段形状和验证边界。为什么 Registry 不是 marketplace，请读 [Registry 模型](/registry-model)。
+## 字段
 
-## 对象职责
-
-Registry 解决的问题是：可复用对象不能只靠人记住文件路径或复制粘贴。工具需要知道从哪里加载对象、索引哪些 kind、应用什么信任策略。
-
-Registry 负责描述：
-
-- 对象来源。
-- 来源类型和位置。
-- 静态索引配置。
-- 适用的 trust policy。
-- registry 加载和索引状态。
-
-Registry 不负责：
-
-- 托管对象或商业分发。
-- 对对象质量排名或推荐。
-- 替代 Trust review。
-- 替代 schema validation。
-- 直接执行 Flow。
-
-## v1alpha1 字段
-
-| 字段 | 要求 | 说明 |
+| 字段 | 要求 | Schema 语义 |
 | --- | --- | --- |
-| `spec.sources` | 必填，至少 1 个 | registry 来源数组。 |
-| `spec.sources[].type` | 必填 | `local`、`git`、`http`、`mcp`。 |
-| `spec.sources[].path` | 与 `url` 至少一个 | 本地路径。 |
-| `spec.sources[].url` | 与 `path` 至少一个 | git、http 或 mcp 来源地址。 |
-| `spec.index.includeKinds` | 可选 | 需要索引的 kind 列表。 |
-| `spec.trustPolicyRef` | 可选 | 适用于 registry 来源的 Policy 引用。 |
-| `status` | 可选 | loaded、indexed、source unavailable 等状态。 |
+| `spec.sources` | 必填，至少 1 项 | source 数组。 |
+| `spec.sources[].type` | 必填 | `local`、`git`、`http` 或 `mcp`。 |
+| `spec.sources[].path` | 与 `url` 至少存在一个 | 字符串。 |
+| `spec.sources[].url` | 与 `path` 至少存在一个 | 字符串。 |
+| `spec.index` | 可选 | 只允许 `includeKinds`。 |
+| `spec.index.includeKinds` | 可选 | 字符串数组。 |
+| `spec.trustPolicyRef` | 可选 | local object reference。 |
+| `status` | 可选 | 通用状态。 |
 
-`sources[].type` 和 `path/url` 的组合由 workspace validator 进一步解释；schema 只要求每个 source 至少有 `path` 或 `url`。
+source 使用 `anyOf`，因此 path 与 url 可以同时存在。schema 不按 `type` 约束 locator：例如它不强制 `local` 使用 path，也不强制 `http` 使用 url。
 
-## 最小合法示例
+`includeKinds` 没有 kind 枚举、`minItems` 或 `uniqueItems`；它是当前 schema 中的字符串过滤列表，不是权限规则。
+
+## 合法示例
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
@@ -68,35 +49,38 @@ spec:
       - Trust
 ```
 
-参考 example：`examples/registry/local-registry.yaml`。
+对应 source example：`examples/registry/local-registry.yaml`。
 
-## 验证规则
+## 当前 CLI 行为
 
-validator 至少应检查：
+- `validate` 检查 source、枚举、locator 和 index 字段形状。
+- `explain` 输出 source 数量、type/locator 和 `includeKinds`。
+- workspace explain 的对象索引来自命令行已读取的文件，不会读取 Registry sources。
+- 当前 Preflight 不消费 Registry，不解析 `trustPolicyRef`，也不通过 Registry 发现缺失对象。
 
-- `kind` 必须是 `Registry`。
-- `spec.sources` 至少包含一个 source。
-- `sources[].type` 只能是 `local`、`git`、`http`、`mcp`。
-- 每个 source 至少有 `path` 或 `url`。
-- `includeKinds` 如果存在，应只包含 workspace 支持的 kind。
-- `trustPolicyRef` 如果存在，应能解析到 `Policy` 或写入 unresolved condition。
+## 验证边界
 
-## 与相邻对象的边界
+- schema 不检查 path 是否存在或 URL 是否可访问。
+- schema 不把 `includeKinds` 限制为 10 个顶层 kind。
+- `trustPolicyRef` 只验证引用形状；当前 CLI 不解析或应用它。
+- Registry 不内联对象内容，也不表达来源已被信任。
+- 当前 source 没有 registry 发布、版本选择、缓存或推荐协议实现。
 
-| 容易混淆 | 边界 |
+## 相邻概念边界
+
+| 容易混淆 | 精确边界 |
 | --- | --- |
-| `Registry` / `Trust` | Registry 说明对象从哪里来；Trust 说明来源是否被审查。 |
-| `Registry` / `Adapter` | Registry 发现外部对象；Adapter 标准化单个外部能力。 |
-| `Registry` / `Policy` | Registry 可引用 trust policy；Policy 定义副作用规则。 |
-| `Registry` / marketplace | Registry 是索引和发现，不是分发市场或推荐系统。 |
+| Registry / workspace | Registry 声明来源；当前 CLI workspace 是命令行实际读入的对象集合。 |
+| Registry / Trust | Registry 说明去哪里找；Trust 记录来源和审查。 |
+| Registry / Adapter | Registry 声明对象来源集合；Adapter 标准化一个导入格式或外部能力。 |
+| `includeKinds` / Policy | 前者是索引范围字符串；后者声明权限规则。 |
+| Registry / marketplace | 当前对象只定义来源与索引字段，不定义市场、排名或分发。 |
 
 ## 常见错误
 
-- 把 Registry 做成 hosted marketplace 的承诺。v1alpha1 只承诺对象来源索引。
-- 省略 Trust 和 Policy。外部来源即使能加载，也不代表可信或可执行。
-- 把 includeKinds 当作权限控制。它只是索引范围，不是执行授权。
-- 在 Registry 里内联对象正文。Registry 指向来源，不替代对象文件。
-
-## 活字印刷位置
-
-Registry 对应“字架”。字架让活字可收纳、可查找、可复用；Registry 让 Huoban 对象可以被工具发现和索引。
+- 声称写了 Registry 就会自动加载 source。
+- 把 `includeKinds` 当作执行 allowlist。
+- 假设 source type 与 path/url 组合已被 schema 强制。
+- 认为 `trustPolicyRef` 可解析或已经应用。
+- 在 Registry 中内联 Skill、Flow 等对象正文。
+- 把 Requirement、Preflight Report 或 Lifecycle Handler 加入顶层 kind 列表。

@@ -1,49 +1,32 @@
 ---
 title: "Policy 对象"
 sidebarTitle: "Policy"
-description: "Policy 是 Huoban 的副作用、审批和权限边界对象，按 capability、side effect 和 trust level 控制执行。"
+description: "Policy 的 unknown side-effect 默认值、capability/side-effect/trust-level 条件和当前仅生成与解析引用的实现边界。"
 ---
 
-# Policy 对象
+`Policy` 是 Huoban 的印坊规矩：它声明副作用、审批和权限边界。Policy 与 Profile 分离；上下文提示不是可执行授权。
 
-`Policy` 是 Huoban 的印坊规矩：它决定什么允许、什么拒绝、什么必须经过审批。
+设计背景见 [Policy 模型](/policy-model)。
 
-规范页定义 Policy 的字段形状和验证边界。为什么 Policy 必须和 Profile 分离，请读 [Policy 模型](/policy-model)。
+## 字段
 
-## 对象职责
-
-Policy 解决的问题是：AI 工作的副作用不能只靠工具默认弹窗、口头约定或自然语言提醒。读文件、写文件、执行命令、访问网络、花钱、发布远端变更、访问密钥都必须有可审查规则。
-
-Policy 负责描述：
-
-- 默认如何处理未知副作用。
-- 哪些 capability、side effect 或 trust level 匹配某条规则。
-- 匹配后是 `allow`、`deny` 还是 `requireApproval`。
-
-Policy 不负责：
-
-- 描述项目偏好；这属于 `Profile`。
-- 记录实际发生的副作用；这属于 `Run.status.observedSideEffects`。
-- 执行审批动作；这属于 `Checkpoint`。
-- 证明对象可信；这属于 `Trust`。
-
-## v1alpha1 字段
-
-| 字段 | 要求 | 说明 |
+| 字段 | 要求 | Schema 语义 |
 | --- | --- | --- |
-| `spec.defaults` | 可选 | 默认策略。 |
-| `spec.defaults.unknownSideEffect` | 可选 | 未声明副作用的处理：`allow`、`deny`、`requireApproval`。 |
-| `spec.rules` | 必填，至少 1 条 | 策略规则数组。 |
+| `spec.defaults` | 可选 | 默认值对象，不允许未声明字段。 |
+| `spec.defaults.unknownSideEffect` | 可选 | `allow`、`deny` 或 `requireApproval`。 |
+| `spec.rules` | 必填，至少 1 项 | rule 数组。 |
 | `spec.rules[].effect` | 必填 | `allow`、`deny` 或 `requireApproval`。 |
-| `spec.rules[].when` | 必填，至少 1 个条件 | 匹配条件。 |
-| `spec.rules[].when.capabilities` | 可选 | capability 数组。 |
-| `spec.rules[].when.sideEffects` | 可选 | side effect 数组。 |
-| `spec.rules[].when.trustLevels` | 可选 | trust level 字符串数组。 |
-| `status` | 可选 | validation、derivation 或 review 状态。 |
+| `spec.rules[].when` | 必填，至少 1 个属性 | 条件对象，不允许未声明字段。 |
+| `when.capabilities` | 可选 | 合法 capability 数组。 |
+| `when.sideEffects` | 可选 | 标准副作用枚举数组。 |
+| `when.trustLevels` | 可选 | 字符串数组；schema 不限定为 Trust level 枚举。 |
+| `status` | 可选 | 通用状态；derive 命令会写入 conditions。 |
 
-v1alpha1 不支持命令级 DSL、路径匹配 DSL、正则匹配、模型匹配或 artifact type 匹配。这些可以在实现侧使用，但不能写成当前公共 schema 字段。
+三个条件数组都没有 `minItems` 或 `uniqueItems`。`when` 只要求至少出现一个条件属性，因此 `{ sideEffects: [] }` 能通过 schema；当前仓库没有 rule evaluator 赋予它执行语义。
 
-## 最小合法示例
+标准副作用列表见 [Skill 副作用枚举](/spec-skill#副作用枚举)。
+
+## 合法示例
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
@@ -66,47 +49,52 @@ spec:
           - modifyGitHistory
 ```
 
-参考 example：`examples/policies/safe-defaults.yaml`。
+对应 source example：`examples/policies/safe-defaults.yaml`。
 
-## 验证规则
+## 当前 CLI 行为
 
-validator 至少应检查：
+### 从 Profile 派生
 
-- `kind` 必须是 `Policy`。
-- `spec.rules` 至少包含一条规则。
-- 每条规则必须有 `effect` 和 `when`。
-- `effect` 只能是 `allow`、`deny`、`requireApproval`。
-- `when` 至少包含 `capabilities`、`sideEffects` 或 `trustLevels` 之一。
-- `sideEffects` 只能使用标准 side effect 枚举。
-- `defaults.unknownSideEffect` 如果存在，只能是 `allow`、`deny`、`requireApproval`。
+```bash
+npm exec -- huoban derive policy profiles/project.yaml --out policies/project-risk.yaml
+```
 
-## 规则解释边界
+当前命令只支持 `derive policy`。它读取第一个 `name: risk` layer 的非空 `data.requiresApproval` 数组，去重后生成一条 `requireApproval` rule，并设置：
 
-v1alpha1 不强制 rule ordering，但实现者应保持解释结果稳定。推荐：
+```yaml
+defaults:
+  unknownSideEffect: requireApproval
+```
 
-- `deny` 优先于 `requireApproval`。
-- `requireApproval` 优先于 `allow`。
-- `defaults.unknownSideEffect` 只处理未知或未声明 side effect，不是所有未匹配规则的通用默认值。
-- capability 或 trust level 未匹配任何规则时，v1alpha1 不定义通用 allow/deny 默认；runtime 应保守处理，并写入 condition。
+输出 conditions 为 `PolicyDerived=True` 与 `PolicyNeedsReview=True`。生成结果需要 review。
 
-这些是解释建议，不是新字段。
+### Explain 与 Preflight
 
-## 与相邻对象的边界
+`explain` 输出 unknown-side-effect 默认值和 rule 摘要。Preflight 只检查 Flow、Run、Profile 或 Trust 关联的 Policy 对象是否可解析；它不匹配 rule、不计算优先级，也不执行 allow/deny/approval。
 
-| 容易混淆 | 边界 |
+## 验证边界
+
+- schema 不定义 rule 顺序、冲突消解、deny 优先级或默认 enforcement 行为。
+- `trustLevels` 只验证为字符串，不与 `Trust.spec.level` 枚举联动。
+- `unknownSideEffect` 字段存在不代表当前 runtime 已检测未知副作用。
+- `Run.status.observedSideEffects` 是执行事实；Policy rules 是声明，两者当前没有 evaluator 连接。
+- `PreflightReady=True` 不是 Policy allow。
+
+## 相邻概念边界
+
+| 容易混淆 | 精确边界 |
 | --- | --- |
-| `Policy` / `Profile` | Profile 是上下文；Policy 是权限和副作用边界。 |
-| `Policy` / `Skill.sideEffects` | Skill 声明可能副作用；Policy 决定如何处理。 |
-| `Policy` / `Checkpoint` | Policy 可以要求审批；Checkpoint 记录审批实例。 |
-| `Policy` / `Trust` | Trust 描述来源信任；Policy 使用信任等级做规则判断。 |
+| Policy / Profile | Policy 声明权限规则；Profile 提供上下文。 |
+| Policy / sideEffects declaration | Skill/Adapter 声明可能副作用；Policy 声明处理规则。 |
+| Policy / Checkpoint | Policy 可以表达 `requireApproval`；Checkpoint 是具体决策对象。 |
+| Policy / Trust | Trust 记录来源和审查；Policy 可以按字符串 trust level 匹配。 |
+| Policy / Preflight | Policy 处理授权；Preflight 处理依赖就绪。 |
 
 ## 常见错误
 
-- 按具体命令写规则，例如 `git push`。v1alpha1 应按 side effect `publishRemote` 表达。
-- 把 Policy 写成自然语言建议。规则必须可机器匹配。
-- 以为 declared side effects 就是真实事实。实际发生的副作用要进入 `Run.status.observedSideEffects`。
-- 在 Profile 里写权限约束但没有 Policy。这样无法稳定执行。
-
-## 活字印刷位置
-
-Policy 对应“印坊规矩”。它不决定印什么，也不决定如何排版；它决定哪些工序能自动做、哪些必须停下来校对、哪些直接禁止。
+- 声称 `deny`、`requireApproval`、`allow` 已有标准优先级；当前 source 未实现 evaluator。
+- 在 `when` 中增加路径、命令、模型或正则字段。
+- 把 `trustLevels` 误写成单个字符串。
+- 把 Profile risk layer 直接当成生效 Policy，而不生成并 review Policy 对象。
+- 认为 Policy 引用能解析就表示规则已应用。
+- 把 Preflight readiness 当作权限授权。

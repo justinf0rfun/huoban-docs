@@ -1,56 +1,99 @@
 ---
 title: "术语表"
 sidebarTitle: "术语表"
-description: "Huoban 的核心术语、活板隐喻和英文对象名对照。"
+description: "Huoban 的 10 个顶层 kind、嵌入式执行契约、Run hash 与安全术语。"
 ---
 
-# 术语表
-
-术语表用于固定 Huoban 的公共语言，避免文档、spec、示例和社区讨论各说各话。
+本页固定 `huoban.dev/v1alpha1` 当前公共语言。未出现在 schema 或 public examples 中的概念不应被描述成现有协议能力。
 
 ## 品牌与哲学
 
-| 术语 | 英文/对象名 | 定义 |
+| 术语 | 定义 |
+| --- | --- |
+| Huoban 活板 | AI 系统的开放编排协议。设计哲学来自活字印刷术。 |
+| 可排版 | 用 Flow 排列 capability、stage、输入输出、Checkpoint 与 lifecycle 声明。 |
+| 可润墨 | 用 Profile 提供分层上下文，不把上下文复制进每个 Skill 或 stage。 |
+| 可印刷 | 用 Run 锁定一次计划或执行的 refs、bindings 与 snapshot，并记录证据。 |
+| standard-first、runtime-later | 先稳定 schema、examples、解释与证据，再实现执行 runtime。 |
+
+## 10 个顶层 kind
+
+| 隐喻 | kind | 当前定义 |
 | --- | --- | --- |
-| Huoban 活板 | Huoban | AI 系统的开放编排协议，设计哲学来自活字印刷术。 |
-| 可排版 | Composable layout | AI 能力可以被取出、组合、排序、替换和检查。 |
-| 可润墨 | Context injection | 上下文像墨方一样注入能力，改变判断重点而不改变能力本体。 |
-| 可印刷 | Reproducible run | 一次 AI 工作可以被描述、锁定、执行、校对、归档和复盘。 |
+| 活字 | `Skill` | 原子能力，声明 capability、输入输出、Requirement 与 side effects。 |
+| 墨方 | `Profile` | 分层上下文，layer 使用 `name`、`data` 和/或 `content`。 |
+| 版式 | `Flow` | capability-first stages、Checkpoint 位置与 Lifecycle Handler 声明。 |
+| 锁版印刷 | `Run` | 一次 explain、dryRun 或 execute snapshot；锁定 refs 与 bindings。 |
+| 校对 | `Checkpoint` | 人类或系统的显式决策边界。 |
+| 印坊规矩 | `Policy` | side effect、capability、Trust level 的 allow / deny / requireApproval 规则。 |
+| 异形活字转接件 | `Adapter` | 描述导入格式、MCP tool、外部 skill 或其他外部能力。 |
+| 印张 | `Artifact` | 产物或协议证据的可寻址记录，包括 Preflight Report。 |
+| 字架 | `Registry` | 对象来源与发现索引。 |
+| 信任印记 | `Trust` | source、level、review、signature、sandbox 与 Policy refs 记录。 |
 
-## 对象术语
+这 10 个名称是当前顶层 kind 的完整集合。
 
-| 活板隐喻 | Huoban 对象 | 定义 |
+## 嵌入式执行契约
+
+| 术语 | 所在位置 | 定义 |
 | --- | --- | --- |
-| 活字 | `Skill` | 原子能力，可复用、可移动、可排列。 |
-| 墨方 | `Profile` | 分层上下文对象。 |
-| 版式 | `Flow` | 能力排列与传递关系。 |
-| 锁版印刷 | `Run` | 一次冻结依赖后的具体执行。 |
-| 校对 | `Checkpoint` | 人或系统确认是否继续。 |
-| 印坊规矩 | `Policy` | 权限、副作用、风险和审批规则。 |
-| 异形活字转接件 | `Adapter` | 把外部能力标准化成 Huoban 对象。 |
-| 字架 | `Registry` | 存放、索引和发现对象的地方。 |
-| 校样 | `Eval` | 可重复执行的质量判断。 |
-| 印件 | `Artifact` | 一次 Run 产生的可审查产物。 |
-| 信任印记 | `Trust` | 来源、审查、签名、sandbox 和 policy 元数据。 |
+| `Requirement` | `Skill`、`Profile`、`Adapter` 的 `spec.requirements[]` | 声明目标环境中的 object、path、executable、MCP、credential、runner capability 或 context dependency。不是 kind。 |
+| Preflight | CLI 行为与 Run status | 对锁定 Run 做 dependency resolution/readiness 检查。不是 kind，也不是授权。 |
+| Preflight Report | `Artifact.spec.type: huoban.dev/preflight-report` | 保存逐项 check evidence 的 Artifact。 |
+| Lifecycle Handler | `Flow.spec.lifecycle[]` | 用有限事件、delivery、role、timeout 和 retry 声明观察、上报或清理。不是 kind。 |
+| Lifecycle Event Envelope | fragment schema | handler 接收的最小 event shape。不是 kind。 |
+| lifecycle invocation | `Run.status.lifecycleInvocations[]` | 记录 handler、event、phase 与 attempts 的状态。当前没有 dispatcher。 |
 
-## 标准术语
+## Requirement 术语
 
 | 术语 | 定义 |
 | --- | --- |
-| `apiVersion` | 对象 API 版本，例如 `huoban.dev/v1alpha1`。 |
-| `kind` | 对象类型。 |
-| `metadata` | 名称、标签、generation、来源等元信息。 |
-| `spec` | 用户或上游系统声明的期望状态。 |
-| `status` | runtime 观察到的实际状态。 |
-| `conditions` | 细粒度状态数组。 |
-| `generation` | spec 发生语义变化时递增的版本号。 |
-| `observedGeneration` | runtime 当前 status 对应的 generation。 |
-| `declaredSideEffects` | Skill / Adapter 声明可能产生的副作用。 |
-| `observedSideEffects` | Run 实际观测到的副作用。 |
+| `origin: declared` | 对象作者明确声明 Requirement。 |
+| `origin: inferred` | Requirement 由导入或分析推断；必须写 `reviewStatus`。 |
+| `reviewStatus: needsReview` | 推断尚未接受；Preflight resolution/readiness 为 `Unknown`。 |
+| `reviewStatus: accepted` | schema 允许的 review 记录；当前 CLI 不提供自动迁移命令。 |
+| `optional` | 该 check 不进入 required gate。best-effort lifecycle handler 的 checks 也按 optional 处理。 |
+| `freshness.maxAgeSeconds` | 动态 readiness evidence 的最长有效期，用于计算 `validUntil`。 |
 
-## 命名原则
+## Preflight 术语
 
-- API 对象使用英文：`Skill`、`Profile`、`Flow`、`Run`。
-- 文化叙事使用中文活板隐喻：活字、墨方、版式、校对、印刷。
-- 不在 schema 中使用拼音对象名。
-- 文档首次出现对象时，尽量同时给出隐喻和对象名。
+| 术语 | 定义 |
+| --- | --- |
+| resolution | target、引用、generation、capability 与 binding 是否明确且可解析。 |
+| readiness | 当前环境现在是否可访问、可执行或可发现该依赖。 |
+| offline | 默认模式；不探测 remote context 或 MCP endpoint。 |
+| live | opt-in、有界、只读 discovery；不调用 MCP tool。 |
+| Run scope | 检查整个 Run；`execute` readiness 前置条件必须来自此 scope。 |
+| stage scope | 检查指定 stage；不能授权整个 Run。 |
+| `PreflightReady` | Run scope required readiness 聚合条件。不是授权。 |
+| `StagePreflightReady` | stage scope required readiness 聚合条件。 |
+| `OptionalDependencyUnavailable` | 至少一个 optional dependency 为 False 或 Unknown。 |
+
+## Run snapshot 术语
+
+| 字段 | 当前 CLI 哈希内容 |
+| --- | --- |
+| `flowSpecHash` | `Flow.spec`。 |
+| `profileRefHash` | Run 的 Profile refs 数组，不是 Profile 正文。 |
+| `policyRefHash` | Run 的 Policy refs 数组。 |
+| `bindingHash` | Run bindings，包括 binding 内的 fallback。 |
+| Preflight `snapshotHash` | 整个 `Run.spec`。 |
+
+`fallback` 属于 `Run.spec.bindings.<role>.fallback`。Flow 不保存 fallback；当前仓库也没有 runtime 自动切换实现。
+
+## 状态与安全术语
+
+| 术语 | 定义 |
+| --- | --- |
+| `spec` | 作者或上游系统声明的对象内容。 |
+| `status` | 实现记录的观察状态；schema 允许并不证明 runtime 已存在。 |
+| `conditions` | `type`、`status`、`reason` 等组成的细粒度状态。 |
+| `generation` | 对象 spec 语义版本，用于引用锁定。 |
+| `observedGeneration` | status 所对应的 generation。 |
+| declared side effects | `Skill` / `Adapter` 声明的可能副作用。 |
+| observed side effects | Run 记录的实际观察；不是预防机制。 |
+| authorization | Policy、Trust、Checkpoint、sandbox 与平台权限共同决定的执行许可；Preflight 不提供。 |
+
+## Lifecycle 事件
+
+当前有限枚举覆盖 Run、stage 与 Checkpoint 的 ready/start/success/failure/finalization/cancellation 边界。具体列表见 [Preflight 与 Lifecycle](/example-preflight-lifecycle#lifecycle-有限事件)。不要添加任意 hook string。

@@ -1,12 +1,12 @@
 ---
 title: "Flow 模型"
 sidebarTitle: "Flow 模型"
-description: "Flow 是 Huoban 的版式：声明 capability-first stage、默认 Profile、默认 Policy、checkpoint 和预期产物。"
+description: "Flow 是 Huoban 的版式：声明 capability-first stage、默认上下文与治理引用、checkpoint、预期产物和有限生命周期处理器。"
 ---
 
 `Flow` 是 Huoban 的版式：定义一类 AI 工作应该如何被排版。
 
-它不执行任务，不保存结果，也不要求绑定某个具体 agent 工具。它描述的是工作结构：需要哪些 capability，分成哪些 stage，输入和输出如何传递，哪里需要 checkpoint，默认使用哪些 `Profile` 和 `Policy`。
+它不执行任务，不保存结果，也不要求绑定某个具体 agent 工具。它描述的是工作结构：需要哪些 capability，分成哪些 stage，输入和输出如何传递，哪里需要 checkpoint，默认使用哪些 `Profile` 和 `Policy`，以及哪些有限生命周期事件需要上报或观察。
 
 本页属于核心概念，解释 `Flow` 的设计边界和编排模型；字段级定义、必填项和 schema 约束见 [Flow 规范](/spec-flow)。
 
@@ -17,11 +17,14 @@ description: "Flow 是 Huoban 的版式：声明 capability-first stage、默认
   <Card title="Capability-first" icon="plug" type="tip" color="#16A34A">
     stage 优先声明需要什么能力，而不是先绑定某个具体 skill。
   </Card>
-  <Card title="Stage 是能力边界" icon="layer-group" type="tip" color="#16A34A">
+  <Card title="Stage 是能力边界" icon="layers" type="tip" color="#16A34A">
     stage 描述 capability、输入、输出和校对边界，不是 shell step。
   </Card>
   <Card title="校对点显式" icon="shield-check" type="tip" color="#16A34A">
     `checkpoints` 让高判断力或高风险位置在版式中可见。
+  </Card>
+  <Card title="生命周期显式" icon="history" type="tip" color="#16A34A">
+    `lifecycle` 用有限事件声明上报、观察与清理，不把任意 hook 命令塞进版式。
   </Card>
 </CardGroup>
 
@@ -48,6 +51,7 @@ Flow 应回答的问题是结构问题：
 - 每个 stage 预期输出什么 artifact 类型？
 - 哪些位置需要 checkpoint？
 - 默认使用哪些 `Profile` 和 `Policy`？
+- 哪些有限生命周期事件需要 handler，以及它们是 required 还是 bestEffort？
 
 当前 Flow schema 不定义 retry、rollback、pause、abort 这类控制流语义。实现可以在 status 中报告状态或等待 checkpoint，但重试、回退和中止策略不属于 v1alpha1 Flow 的承诺。
 
@@ -95,8 +99,9 @@ bindings:
     adapterRef: grill-me-skill-md
 snapshot:
   flowSpecHash: sha256:...
-  profileSpecHash: sha256:...
-  skillBindingHash: sha256:...
+  profileRefHash: sha256:...
+  policyRefHash: sha256:...
+  bindingHash: sha256:...
 ```
 
 这样同一个 Flow 可以在不同工具、团队和执行环境中复用。
@@ -111,7 +116,7 @@ id: review
 uses: mattpocock/grill-me
 ```
 
-但 `uses` 不是推荐主路径。没有 registry、adapter 或 skill metadata 时，工具只能保留这个引用或标记为 unresolved，不能保证自动展开成 capability requirement 和 `Run` binding。
+但 `uses` 不是推荐主路径。没有 Registry、Adapter 或 Skill metadata 时，工具只能保留这个引用或标记为 unresolved，不能保证自动展开成 capability 与 `Run` binding。当前 Preflight 允许它用于 dry-run 和诊断；execute mode 必须改用 `requires.capability` 与锁定的 Run binding，否则产生 `LegacyUseNotLocked`。
 
 推荐主路径仍然是：
 
@@ -120,7 +125,10 @@ uses: mattpocock/grill-me
 id: review
 requires:
   capability: huoban.dev/designReview
+  role: primary-review
 ```
+
+这里的 `requires` 是 Flow 的**能力需求**：它包含 capability 与可选 role，用于选择实现。它不是 `Skill`、`Profile`、`Adapter` 上的 `requirements[]`；后者描述实现依赖的文件、程序、MCP 能力、凭据或上下文来源。详见 [Requirement](/requirement-model)。
 
 ## Stage 是能力边界
 
@@ -152,6 +160,36 @@ command: claude -p "review this idea"
 ```
 
 命令、CLI 参数、模型调用细节和工具私有字段应该进入 `Adapter`、导入层或实现私有扩展，不应污染 Flow 的核心对象。
+
+## Lifecycle Handler
+
+Flow 可以在有限生命周期事件上声明观察性处理器：
+
+```yaml
+lifecycle:
+  - id: report-stage-success
+    on: stage.succeeded
+    delivery: bestEffort
+    requires:
+      capability: huoban.dev/stageReporting
+      role: stage-reporter
+    timeoutSeconds: 10
+    retry:
+      maxAttempts: 3
+```
+
+handler 和 stage 一样只声明 capability 与 role；具体 provider 由 `Run.spec.bindings.stage-reporter` 锁定。`bestEffort` 与 `required` 是对具备 dispatcher 的实现提出的 delivery 语义；当前 reference CLI 只把前者作为 optional、后者作为 required 参与 Preflight，并不实际投递。
+
+Lifecycle Handler 不是任意 hook：
+
+- 只能使用 v1alpha1 的有限事件枚举。
+- `match` 当前只按 stage id 过滤。
+- 同一事件上的多个 handler 不保证顺序。
+- handler 不修改 stage 图、不作业务判断，也不会因自身 invocation 再产生 lifecycle event。
+- 需要严格先后关系的工作必须建模为 stage。
+- `run.succeeded`、`run.failed`、`run.cancelled` 只允许 `bestEffort`；required 收尾使用 `run.finalizing`。
+
+当前 reference implementation 支持 schema、Preflight、explain、事件信封示例和 invocation 状态形状，尚未提供实际 dispatcher。详见 [Lifecycle Handler](/lifecycle-handler-model)。
 
 ## Checkpoint
 
@@ -210,7 +248,7 @@ policyRefs:
   - name: safe-defaults
 ```
 
-这些是 Flow 的默认引用，不是一次执行的最终事实。`Run` 可以声明本次执行使用的 `profileRefs` / `policyRefs`。v1alpha1 只在 snapshot 中记录 flow、profile 和 binding hash；Policy 的锁定语义需要通过 refs、generation、status 或未来字段说明。
+这些是 Flow 的默认引用，不是一次执行的最终事实。`Run` 声明本次执行使用的 `profileRefs` / `policyRefs`。v1alpha1 snapshot 可记录 `flowSpecHash`、`profileRefHash`、`policyRefHash` 和 `bindingHash`；后两类 ref hash 只覆盖引用列表，不等于被引用对象完整内容的快照。
 
 这对应活字印刷术里的关系：同一版式可以换墨，也可以按不同印坊规矩印刷。
 
@@ -224,11 +262,12 @@ policyRefs:
 | --- | --- |
 | context engineering | `Profile` 负责上下文结构化、分层和合并；执行快照由 `Run` 记录。 |
 | agent loop structure | `Flow` 描述多阶段 AI 工作结构：capability、stage、输入输出和 checkpoint。 |
-| execution trace | `Run` 记录一次执行实际使用的 flow、profile、policy、binding、mode 和 snapshot。 |
+| loop observation | `Lifecycle Handler` 在有限事件上声明上报与观察，invocation 进入 Run status。 |
+| execution trace | `Run` 记录一次执行实际使用的 flow、profile、policy、binding、mode、snapshot 与状态索引。 |
 | judgment boundary | `Checkpoint` 让 agent loop 在高判断力或高风险位置停下来。 |
 | stage output | `Artifact` 留下 stage 输出、审查材料、hash 和复盘依据。 |
 
-当前 v1alpha1 的 Flow schema 没有定义完整 loop DSL。Flow 是描述 agent loop 结构的基础对象，不是任意循环控制语言。
+当前 v1alpha1 的 Flow schema 没有定义完整 loop DSL。Flow 是描述 agent loop 结构的基础对象，不是任意循环控制语言；Lifecycle Handler 也不是隐藏的控制流通道。
 
 ## 参考 Flow
 

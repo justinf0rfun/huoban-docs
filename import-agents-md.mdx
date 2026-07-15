@@ -1,109 +1,149 @@
 ---
 title: "导入 AGENTS.md"
 sidebarTitle: "导入 AGENTS.md"
-description: "把 AGENTS.md 从自然语言指令文件迁移为 Huoban Profile。"
+description: "使用当前通用 Markdown importer，把 AGENTS.md 转成待审查的 Huoban Profile。"
 ---
 
-# 导入 [AGENTS.md](http://AGENTS.md)
-
-`AGENTS.md` 是 Huoban 最重要的迁移入口之一。
-
-它通常包含项目规则、编码习惯、测试命令、审查标准、安全约束和 agent 行为要求。Huoban 不应该替代它，而应该把它升级成标准 Profile 对象。
-
-## 定位
+当前 CLI 原生支持单个 Markdown 文件导入为 `Profile`，也支持把 Profile 导出为 `AGENTS.md`。
 
 ```text
-AGENTS.md = profile file
-Huoban Profile = profile object
+AGENTS.md -> Profile -> validate / explain -> human review
+                     -> optional Policy derive -> review
+                     -> AGENTS.md export -> review
 ```
 
-导入后，原始文本必须保留，不能因为结构化而丢失信息。
+导入成功不代表推断正确或内容可信。生成对象包含 `ImportNeedsReview=True`。
 
-## 命令
+## 运行导入
+
+在 `huoban` source repo 根目录执行：
 
 ```bash
-huoban import AGENTS.md --as Profile --out profiles/project.yaml
+npm exec -- huoban import AGENTS.md --as Profile --out profiles/agents-profile.yaml
 ```
 
-## 转换规则
+public example 使用：
 
-Huoban import 应执行以下步骤：
+```bash
+npm run import:profile
+```
 
-1. 读取原始 Markdown。
-2. 保留完整原文到 `content`。
-3. 识别可结构化的规则并写入 `data`。
-4. 推断 layer。
-5. 标记不确定项。
-6. 生成 `ImportNeedsReview` condition。
+它等价于：
 
-## 推荐 layer
+```bash
+node ./bin/huoban.js import examples/import/AGENTS.md --as Profile --out examples/generated/agents-profile.yaml
+```
 
-| AGENTS.md 内容 | Profile layer |
+当前约束：
+
+- 输入必须是单个可读文件，不支持目录。
+- `--as` 只接受 `Profile`。
+- `--out` 必填；CLI 会创建父目录。
+- 输入 basename 决定默认对象名，例如 `AGENTS.md` 生成 `agents-profile`。
+
+## 当前分层规则
+
+importer 使用确定性的标题/文本匹配：
+
+| 命中内容 | 目标 layer |
 | --- | --- |
-| 编码风格 | `style` |
-| 测试命令 | `commands` / `testing` |
-| 架构边界 | `architecture` |
-| 安全要求 | `risk` 或 Policy 引用 |
-| 代码审查要求 | `review` |
-| 禁止行为 | Policy，不应只放 Profile |
-| 项目背景 | `domain` / `context` |
+| style、coding、review、change、simplicity | `style` |
+| command、test、verify、build、lint | `commands` |
+| risk、safety、permission、approval、git、publish、secret | `risk` |
+| 未匹配内容 | `source` |
 
-## 示例
+结构化值写入 `data`，原始规则文字保留在 `content`。这是规则推断，不是自然语言的完整语义证明。
 
-输入：
+## 完整 public 输出
 
-```md
-# AGENTS.md
-
-- Prefer small, surgical changes.
-- Run npm test before final response.
-- Do not modify unrelated files.
-- Ask before pushing to remote.
-```
-
-输出：
+下面逐字取自 source tree 的 `examples/generated/agents-profile.yaml`：
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
 kind: Profile
 metadata:
-  name: project-agents-profile
+  name: agents-profile
+  labels:
+    huoban.dev/imported-from: examples/import/AGENTS.md
 spec:
   layers:
     - name: style
       data:
         preferSmallChanges: true
-        avoidUnrelatedChanges: true
-      content: |
-        Prefer small, surgical changes.
-        Do not modify unrelated files.
-    - name: testing
+        avoidUnrelatedRefactor: true
+        testFirstForBugfixes: true
+      content: |-
+        Prefer small surgical changes. Do not refactor unrelated code.
+        Use test-first changes for bug fixes when practical.
+    - name: commands
       data:
-        testCommand: npm test
-      content: |
-        Run npm test before final response.
-  policyRefs:
-    - require-approval-for-remote-publish
+        commands:
+          - npm run validate
+          - npm run explain
+      content: |-
+        Run `npm run validate` before finalizing schema or example changes.
+        Use `npm run explain` to inspect the example workspace.
+    - name: risk
+      data:
+        requiresApproval:
+          - publishRemote
+          - modifyGitHistory
+          - accessSecret
+        inferred: true
+      content: Ask before modifying git history, publishing remote changes, or accessing secrets.
 status:
   conditions:
+    - type: ProfileImported
+      status: "True"
+      reason: ImportedFromMarkdown
+      message: examples/import/AGENTS.md was converted into Profile layers.
     - type: ImportNeedsReview
       status: "True"
-      reason: InferredFromMarkdown
-      message: "Policy reference was inferred from a natural-language rule."
+      reason: RuleBasedInference
+      message: Structured fields were inferred by deterministic rules and should be reviewed.
 ```
 
-## 导出
+`examples/...` 是 Huoban source repo 内的路径，不是文档站链接。
 
-Huoban 必须支持导出回 `AGENTS.md`：
+## 验证与解释
 
 ```bash
-huoban export profiles/project-agents-profile.yaml --to AGENTS.md
+npm exec -- huoban validate profiles/agents-profile.yaml
+npm exec -- huoban explain profiles/agents-profile.yaml
 ```
 
-导出应生成可读 Markdown，而不是机器配置转储。
+重点审查：
 
-## 注意事项
+- `content` 是否保留限定语。
+- `data` 是否把自然语言错误地简化成布尔值。
+- 命令是否完整且仍适用于当前仓库。
+- risk side effect 是否使用当前 enum。
+- 需要审批的规则是否应进入独立 Policy。
 
-- 不要把危险操作规则只当作自然语言偏好；应迁移到 Policy。
-- 不确定的推断必须保留 condition。
-- 导入结果默认不应被视为完全 trusted，需要用户 review。
+## 派生 Policy
+
+只有存在名为 `risk` 的 layer，且 `data.requiresApproval` 为非空数组时，当前 derive 命令才能成功：
+
+```bash
+npm exec -- huoban derive policy profiles/agents-profile.yaml --out policies/agents-risk-policy.yaml
+npm exec -- huoban validate policies/agents-risk-policy.yaml
+```
+
+生成 Policy 会带 `PolicyNeedsReview=True`。它不会自动绑定到 Flow/Run，也不会自行执行。
+
+## 导出 AGENTS.md
+
+```bash
+npm exec -- huoban export profiles/agents-profile.yaml --to AGENTS.md --out generated/AGENTS.md
+```
+
+当前 export 只支持 `--to AGENTS.md`。输出包含结构化 YAML、原始 content 和 import conditions，并带有 `Review before use` 注释。
+
+生成的 Markdown 不能直接视为可信协议对象。review 是显式采用步骤；当前 CLI 不提供自动接受或 status 迁移。
+
+## 下一步
+
+- [完整 AGENTS.md example](/example-import-agents-profile)
+- [导入 CLAUDE.md](/import-claude-md)
+- [导入 Cursor Rules](/import-cursor-rules)
+- [安全策略](/security)

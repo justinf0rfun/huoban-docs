@@ -3,22 +3,17 @@
   "theme": "mint",
   "name": "Huoban",
   "colors": {
-    "primary": "#16A34A",
+    "primary": "#15803D",
     "light": "#22C55E",
     "dark": "#15803D"
   },
   "favicon": "/favicon.svg",
   "navigation": {
-    "pages": [
+    "languages": [
       {
-        "group": "Getting Started",
-        "pages": [
-          "index",
-          "quickstart"
-        ]
-      }
-    ],
-    "groups": [
+        "language": "zh-Hans",
+        "default": true,
+        "groups": [
       {
         "group": "开始使用",
         "pages": [
@@ -37,6 +32,16 @@
           "profile-model",
           "flow-model",
           "run-model",
+          {
+            "group": "执行契约",
+            "icon": "route",
+            "expanded": false,
+            "pages": [
+              "requirement-model",
+              "preflight-model",
+              "lifecycle-handler-model"
+            ]
+          },
           "checkpoint-model",
           "artifact-model",
           "policy-model",
@@ -49,6 +54,16 @@
         "icon": "book-open",
         "pages": [
           "spec-reference",
+          {
+            "group": "共享协议结构",
+            "icon": "braces",
+            "expanded": false,
+            "pages": [
+              "spec-requirement",
+              "spec-preflight",
+              "spec-lifecycle-handler"
+            ]
+          },
           "spec-skill",
           "spec-profile",
           "spec-flow",
@@ -78,7 +93,8 @@
           "examples-overview",
           "example-import-agents-profile",
           "example-idea-to-spec-review",
-          "example-skill-md-adapter"
+          "example-skill-md-adapter",
+          "example-preflight-lifecycle"
         ]
       },
       {
@@ -102,24 +118,16 @@
           "faq"
         ]
       }
+        ]
+      }
     ]
+  },
+  "icons": {
+    "library": "lucide"
   },
   "logo": {
     "light": "/logo/light.svg",
     "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://app.mintlify.com"
-    }
   },
   "contextual": {
     "options": [
@@ -132,13 +140,6 @@
       "cursor",
       "vscode"
     ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
   },
   "description": "Huoban 是 AI 系统的开放编排协议：可排版、可润墨、可印刷。"
 }

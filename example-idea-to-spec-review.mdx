@@ -1,75 +1,51 @@
 ---
 title: "示例：idea-to-spec-review"
 sidebarTitle: "idea-to-spec-review"
-description: "从一个想法到规格审查的端到端示例，展示 Huoban 对象如何组合成可验证、可解释、可复盘的 AI 工作流。"
+description: "用真实 Flow、Run、Checkpoint 和 Artifact 复现 capability-first 编排与执行前证据链。"
 ---
 
-# 示例：idea-to-spec-review
+`idea-to-spec-review` 把“先审查想法，再起草规格大纲”拆成可验证对象：
 
-`idea-to-spec-review` 是一个端到端示例：把“把想法打磨成规格草案”这件 AI 工作拆成可验证对象。
+1. `sharpen-idea` 需要 `huoban.dev/designReview`。
+2. 人类在方向 Checkpoint 做出 `approve`、`requestChanges` 或 `reject` 决策。
+3. `draft-spec-outline` 需要 `huoban.dev/specification`。
+4. `stage.succeeded` 可以声明一个 best-effort 上报 handler。
 
-它验证的核心假设是：AI 工作不应该只存在于 prompt、聊天历史或某个工具的 workflow 里。Huoban 可以把能力、上下文、编排、执行快照、校对点和产物拆成对象，让同一套语义被不同 agent、tool、MCP server 或 runner 解释和绑定。
+当前仓库验证、解释、打印和预检这些对象，但不执行 stage、解决 Checkpoint 或派发 lifecycle event。
 
-## 示例目标
-
-这个示例把一次工作拆成两段：
-
-1. `sharpen-idea`：用 `huoban.dev/designReview` 能力审查方向，产出 `review-notes`。
-2. `draft-spec-outline`：用 `huoban.dev/specification` 能力把 review notes 变成规格大纲。
-
-第一段后必须停下来做 `Checkpoint`，因为方向判断会影响后续规格。
-
-## 示例文件
-
-| 路径 | 对象 |
-| --- | --- |
-| `examples/skills/design-review.yaml` | `Skill/design-review` |
-| `examples/skills/spec-outline-writer.yaml` | `Skill/spec-outline-writer` |
-| `examples/adapters/grill-me-skill-md.yaml` | `Adapter/grill-me-skill-md` |
-| `examples/profiles/huoban-open-source-project.yaml` | `Profile/huoban-open-source-project` |
-| `examples/policies/safe-defaults.yaml` | `Policy/safe-defaults` |
-| `examples/flows/idea-to-spec-review.yaml` | `Flow/idea-to-spec-review` |
-| `examples/runs/idea-to-spec-review-run.yaml` | `Run/idea-to-spec-review-001` |
-| `examples/generated/idea-to-spec-review-dry-run.yaml` | CLI 生成的 `Run/idea-to-spec-review-dry-run` |
-| `examples/checkpoints/idea-to-spec-review-direction.yaml` | `Checkpoint/idea-to-spec-review-001-direction` |
-| `examples/artifacts/review-notes.yaml` | `Artifact/review-notes` |
+文中的 `examples/...` 是 Huoban source repo 内的路径，不是文档站链接。
 
 ## 对象关系
 
 ```text
-Flow/idea-to-spec-review
+Flow/idea-to-spec-review@2
   profileRefs -> Profile/huoban-open-source-project
   policyRefs  -> Policy/safe-defaults
-  stages:
-    sharpen-idea requires huoban.dev/designReview role primary-review
-    draft-spec-outline requires huoban.dev/specification role spec-writer
+  stage role primary-review -> Run binding -> Adapter/grill-me-skill-md
+  stage role spec-writer    -> Run binding -> Skill/spec-outline-writer
+  handler role stage-reporter -> Run binding -> Adapter/stage-reporting-mcp
 
-Run/idea-to-spec-review-dry-run
-  flowRef     -> Flow/idea-to-spec-review
-  profileRefs -> Profile/huoban-open-source-project
-  policyRefs  -> Policy/safe-defaults
-  bindings:
-    primary-review -> Adapter/grill-me-skill-md
-    spec-writer    -> Skill/spec-outline-writer
+Run/idea-to-spec-review-001
+  artifacts -> Artifact/review-notes
+  lifecycleInvocations -> report-stage-success: Pending
 
 Checkpoint/idea-to-spec-review-001-direction
-  runRef       -> Run/idea-to-spec-review-001
-  artifactRefs -> Artifact/review-notes
-
-Artifact/review-notes
   runRef -> Run/idea-to-spec-review-001
+  artifactRefs -> Artifact/review-notes
 ```
 
-`Flow` 是版式，说明能力如何排列；`Run` 是锁版印刷，说明这次执行具体绑定了哪些对象；`Checkpoint` 是校对，说明哪里必须停下；`Artifact` 是印件，记录这次执行留下的事实。`Policy` 和 `Profile` 是被引用对象，不是这条链路的父节点。
+`Flow` 声明 capability 与 role；具体 `Skill`、`Adapter` 和 fallback 只能锁定在 `Run.spec.bindings`。
 
-## 关键 Flow 片段
+## 完整 Flow
+
+下面逐字取自 `examples/flows/idea-to-spec-review.yaml`：
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
 kind: Flow
 metadata:
   name: idea-to-spec-review
-  generation: 1
+  generation: 2
 spec:
   profileRefs:
     - name: huoban-open-source-project
@@ -101,38 +77,44 @@ spec:
       type: humanApproval
       required: true
       reason: ConfirmDirectionBeforeSpec
+  lifecycle:
+    - id: report-stage-success
+      on: stage.succeeded
+      delivery: bestEffort
+      requires:
+        capability: huoban.dev/stageReporting
+        role: stage-reporter
+      timeoutSeconds: 10
+      retry:
+        maxAttempts: 3
 ```
 
-完整文件：`examples/flows/idea-to-spec-review.yaml`。
+这里的 lifecycle block 是声明，不是任意 hook。`on` 必须来自 `v1alpha1` 有限事件枚举；handler 通过 role 在 Run 中绑定实现。
 
-## 为什么是 capability-first
+## 打印并预检 dry-run Run
 
-`Flow` 没有直接写“调用某个工具”。它写的是：
+在 source repo 根目录运行：
 
-| stage | capability | role |
-| --- | --- | --- |
-| `sharpen-idea` | `huoban.dev/designReview` | `primary-review` |
-| `draft-spec-outline` | `huoban.dev/specification` | `spec-writer` |
+```bash
+npm run validate
+npm run explain
+npm run print:dry-run
+npm run preflight
+```
 
-这使得同一个 Flow 可以在不同环境中绑定不同实现：
+`print:dry-run` 的当前 binding 参数是：
 
-- 本地可以把 `primary-review` 绑定到 `Adapter/grill-me-skill-md`。
-- 另一个 runner 可以把它绑定到原生 `Skill/design-review`。
-- 企业环境可以绑定到内部 MCP tool，但 Flow 本身不需要改变。
+```bash
+node ./bin/huoban.js print --dry-run examples/flows/idea-to-spec-review.yaml --out examples/generated/idea-to-spec-review-dry-run.yaml --bind primary-review=adapter:grill-me-skill-md --bind spec-writer=skill:spec-outline-writer --bind stage-reporter=adapter:stage-reporting-mcp
+```
 
-## CLI-generated dry-run Run
-
-`npm run print:dry-run` 生成的是 `examples/generated/idea-to-spec-review-dry-run.yaml`。它是计划对象，不执行 agent 工作，也不包含 checkpoint/artifact 的执行状态。
+生成 Run 的 `spec` 逐字取自 `examples/generated/idea-to-spec-review-dry-run.yaml`：
 
 ```yaml
-apiVersion: huoban.dev/v1alpha1
-kind: Run
-metadata:
-  name: idea-to-spec-review-dry-run
 spec:
   flowRef:
     name: idea-to-spec-review
-    generation: 1
+    generation: 2
   profileRefs:
     - name: huoban-open-source-project
   policyRefs:
@@ -143,19 +125,20 @@ spec:
       adapterRef: grill-me-skill-md
     spec-writer:
       skillRef: spec-outline-writer
+    stage-reporter:
+      adapterRef: stage-reporting-mcp
   snapshot:
-    flowSpecHash: sha256:a58aaad21d4181240220f012e0c3fa598f6b98945199df1071ee8f531c276d55
-    profileSpecHash: sha256:7559a8d488bbdb57906ee5116931bc487bbae1841ab059037d9723c2d848bf77
-    skillBindingHash: sha256:b99831fad57253e14977ea0896add31f523d410b17b18aca03bb2d5e39529455
-status:
-  phase: Planned
+    flowSpecHash: sha256:b7a80c75e7a8f3f0e043d78623e84a0bd70def9f50134657751bf5e27a5fece2
+    profileRefHash: sha256:7559a8d488bbdb57906ee5116931bc487bbae1841ab059037d9723c2d848bf77
+    policyRefHash: sha256:745db2bbc095810039b9b13ef544ce49bd28e1f7474757cf256e27906fb65006
+    bindingHash: sha256:9d47cbf573e28dad7fd0080bdc96894a27ba85377421e4e34f3455cc58a5f01b
 ```
 
-完整文件：`examples/generated/idea-to-spec-review-dry-run.yaml`。
+这些值锁定 Flow spec、Profile refs、Policy refs 和 bindings。Preflight report 的 `snapshotHash` 另行哈希整个 `Run.spec`。
 
-## Authored execution-state Run
+## 完整 authored Run
 
-`examples/runs/idea-to-spec-review-run.yaml` 是手写的执行状态示例，用来展示 Run 等待 checkpoint 时如何引用 artifact。它包含 placeholder hash，不是 `print:dry-run` 的直接输出。
+`examples/runs/idea-to-spec-review-run.yaml` 是手写的协议状态示例，不是当前 CLI runtime 的执行输出。它使用与当前对象组合一致的四个 hash，展示 Checkpoint 等待和 lifecycle invocation 记录：
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
@@ -165,7 +148,7 @@ metadata:
 spec:
   flowRef:
     name: idea-to-spec-review
-    generation: 1
+    generation: 2
   profileRefs:
     - name: huoban-open-source-project
       generation: 1
@@ -177,22 +160,39 @@ spec:
       adapterRef: grill-me-skill-md
     spec-writer:
       skillRef: spec-outline-writer
+    stage-reporter:
+      adapterRef: stage-reporting-mcp
   snapshot:
-    flowSpecHash: sha256:flow-placeholder
-    profileSpecHash: sha256:profile-placeholder
-    skillBindingHash: sha256:binding-placeholder
+    flowSpecHash: sha256:b7a80c75e7a8f3f0e043d78623e84a0bd70def9f50134657751bf5e27a5fece2
+    profileRefHash: sha256:d9ec168320ac8ea60d3aa5f049ce8a58bc0c625f1937d560c7e4b0d801f3d5d9
+    policyRefHash: sha256:745db2bbc095810039b9b13ef544ce49bd28e1f7474757cf256e27906fb65006
+    bindingHash: sha256:9d47cbf573e28dad7fd0080bdc96894a27ba85377421e4e34f3455cc58a5f01b
 status:
   phase: WaitingForCheckpoint
   currentStage: sharpen-idea
+  conditions:
+    - type: RunPlanned
+      status: "True"
+      reason: DryRunGenerated
+    - type: CheckpointRequired
+      status: "True"
+      reason: ConfirmDirectionBeforeSpec
+  lifecycleInvocations:
+    - handlerId: report-stage-success
+      eventId: idea-to-spec-review-001-sharpen-idea-succeeded
+      eventType: stage.succeeded
+      stage: sharpen-idea
+      phase: Pending
+      attempts: 0
   artifacts:
     - name: review-notes
 ```
 
-完整文件：`examples/runs/idea-to-spec-review-run.yaml`。
+`phase: Pending` 只展示 invocation status 的协议形状。当前仓库没有 dispatcher 去把它自动变成 `Running`、`Succeeded` 或 `Failed`。
 
-两类 Run 解决不同问题：generated dry-run Run 证明 Flow 可以被打印成计划；authored execution-state Run 展示一次执行如何进入 `WaitingForCheckpoint` 并关联 Artifact。
+## 完整 Checkpoint
 
-## Checkpoint 与 Artifact
+下面逐字取自 `examples/checkpoints/idea-to-spec-review-direction.yaml`：
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
@@ -210,7 +210,19 @@ spec:
     - reject
   artifactRefs:
     - name: review-notes
+status:
+  phase: Pending
+  conditions:
+    - type: CheckpointRequired
+      status: "True"
+      reason: HumanDesignDecisionRequired
 ```
+
+Checkpoint 是决策边界，不属于 Preflight。当前 CLI 也不会在 `approve` 后自动更新 Run；执行实现必须明确记录自己的状态迁移。
+
+## 完整 Artifact
+
+下面逐字取自 `examples/artifacts/review-notes.yaml`：
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
@@ -224,47 +236,20 @@ spec:
   stage: sharpen-idea
   contentRef:
     type: file
-    path: artifacts/idea-review.md
-  hash: sha256:artifact-placeholder
+    path: examples/artifacts/idea-review.md
+  hash: sha256:9ad055106d6f4411941a3bbeb26f8487dc9e68476df9d575fc9535121c775dbe
   review:
     status: pending
 ```
 
-完整文件：
+Flow output 是预期产物声明；Artifact 是某次 Run 留下的内容引用、hash 和 review 状态。
 
-- `examples/checkpoints/idea-to-spec-review-direction.yaml`
-- `examples/artifacts/review-notes.yaml`
+## explain 结果
 
-`Flow.spec.stages[].outputs` 声明预期输出；`Artifact` 记录一次执行实际留下的产物引用、hash 和 review 状态。
-
-## 运行验证
-
-在 source repo 中运行：
-
-```bash
-npm run validate
-npm run explain
-npm run print:dry-run
-```
-
-也可以验证单个 Flow：
-
-```bash
-npm exec -- huoban validate examples/flows/idea-to-spec-review.yaml
-```
-
-预期输出：
+`npm run explain` 中对应部分是：
 
 ```text
-✓ examples/flows/idea-to-spec-review.yaml: Flow/idea-to-spec-review
-```
-
-## explain 应该看什么
-
-`npm run explain` 会把这个示例解释成：
-
-```text
-compose Flow/idea-to-spec-review
+- compose Flow/idea-to-spec-review
   ink with Profile/huoban-open-source-project
   apply Policy/safe-defaults
   set stage sharpen-idea: huoban.dev/designReview
@@ -272,66 +257,36 @@ compose Flow/idea-to-spec-review
   proof after sharpen-idea: ConfirmDirectionBeforeSpec
 ```
 
-这段输出对应活字印刷流程：
+对象映射如下：
 
-| explain 输出 | Huoban 对象 | 含义 |
+| 过程 | 对象 | 当前 CLI 是否执行 |
 | --- | --- | --- |
-| `compose Flow` | `Flow` | 排版。 |
-| `ink with Profile` | `Profile` | 润墨。 |
-| `apply Policy` | `Policy` | 套用印坊规矩。 |
-| `set stage` | `Skill` / `Adapter` capability | 选择活字并排入版式。 |
-| `proof after` | `Checkpoint` | 校对。 |
+| 排列 capability stages | `Flow` | 只验证和解释。 |
+| 注入上下文 | `Profile` | 只记录引用和 Requirement；不构造 runtime prompt。 |
+| 锁定实现 | `Run.spec.bindings` | `print --dry-run` 会生成。 |
+| 检查依赖 | Preflight evidence | CLI 会生成 Run status 与 Artifact。 |
+| 判断副作用 | `Policy`、`Trust` | CLI 不授权或强制执行。 |
+| 停下决策 | `Checkpoint` | schema 可表达；当前无处理 runtime。 |
+| 运行 stage/handler | runtime | 当前仓库未实现。 |
 
-## dry-run 应该看什么
+## 修改规则
 
-`npm run print:dry-run` 会生成：
-
-```text
-examples/generated/idea-to-spec-review-dry-run.yaml: Run/idea-to-spec-review-dry-run
-```
-
-生成的 Run 是 `mode: dryRun` 和 `status.phase: Planned`，包含：
-
-- `flowRef`
-- `profileRefs`
-- `policyRefs`
-- `bindings`
-- `snapshot`
-- `RunPlanned`
-- `FlowSnapshotCreated`
-
-这说明 Huoban 可以先印出“版式快照”，不执行真实 agent 工作。
-
-如果你看到 `WaitingForCheckpoint`、`currentStage` 或 `Artifact` 引用，那是 authored execution-state example，不是当前 `print:dry-run` 生成内容。
-
-## 常见修改方式
-
-| 你要改什么 | 应该改哪里 |
+| 目标 | 应修改的位置 |
 | --- | --- |
-| 增加一个审查阶段 | 修改 `Flow.spec.stages`。 |
-| 换成另一个 review skill | 修改 `Run.spec.bindings`，不要改 Flow。 |
-| 增加项目上下文 | 修改或新增 `Profile`，再通过 `profileRefs` 引用。 |
-| 增加发布、花钱、访问密钥等规则 | 修改 `Policy`。 |
-| 要求某一步必须人审 | 修改 `Flow.spec.checkpoints`，并在执行中生成 `Checkpoint`。 |
-| 记录真实产物 | 创建或更新 `Artifact`，不要把正文塞进 Flow。 |
-
-## 常见错误
-
-| 错误 | 为什么错 |
-| --- | --- |
-| 在 Flow 里绑定具体 agent 或模型。 | Flow 应声明 capability；具体实现属于 Run binding。 |
-| 把 Checkpoint 当作聊天里的暂停。 | Checkpoint 是对象，必须能引用 Run、stage 和 artifact。 |
-| 只保存最终 Markdown。 | 缺少 Run、Checkpoint 和 Artifact，就无法复盘过程。 |
-| 把 Profile 里的规则复制进每个 stage。 | 上下文应由 Profile 注入，不应污染 Flow 结构。 |
+| 改工作步骤 | `Flow.spec.stages`。 |
+| 更换实现 | `Run.spec.bindings`。 |
+| 添加 fallback | 对应 Run binding 的 `fallback`，不是 Flow。 |
+| 添加上下文依赖 | `Profile.spec.requirements`。 |
+| 添加执行环境依赖 | `Skill`、`Profile` 或 `Adapter` 的 `requirements`。 |
+| 添加审批边界 | `Policy` 和 `Checkpoint`。 |
+| 添加观察、上报或清理 | `Flow.spec.lifecycle` 的有限事件 handler。 |
+| 改变业务状态或权限 | stage、Checkpoint 或 Policy；不要藏进 lifecycle handler。 |
 
 ## 相关页面
 
+- [Preflight 与 Lifecycle](/example-preflight-lifecycle)
 - [Flow 模型](/flow-model)
 - [Run 模型](/run-model)
 - [Checkpoint 模型](/checkpoint-model)
 - [Artifact 模型](/artifact-model)
-- [Flow 规范](/spec-flow)
-- [Run 规范](/spec-run)
-- [Checkpoint 规范](/spec-checkpoint)
-- [Artifact 规范](/spec-artifact)
 - [示例总览](/examples-overview)

@@ -1,113 +1,101 @@
 ---
 title: "Profile 对象"
 sidebarTitle: "Profile"
-description: "Profile 是 Huoban 的分层上下文对象，负责把项目规则、领域语言和历史决策变成可审查上下文。"
+description: "Profile 的分层上下文、开放 merge 数据、外部 Requirement、Policy 引用和当前 import/export 行为。"
 ---
 
-# Profile 对象
+`Profile` 是 Huoban 的墨方：它把项目规则、领域语言、命令和历史上下文组织成可引用的 layer。Profile 不声明能力，也不代替 Policy 授权。
 
-`Profile` 是 Huoban 的墨方：它不改变 Skill 本体，但改变 Skill 在某个项目、团队或场景里的判断标准。
+设计背景见 [Profile 模型](/profile-model)，外部依赖结构见 [Requirement](/spec-requirement)。
 
-规范页定义 Profile 的字段形状和验证边界。为什么上下文必须成为对象，请读 [Profile 模型](/profile-model)。
+## 字段
 
-## 对象职责
-
-Profile 解决的问题是：上下文不能只散落在聊天历史、AGENTS.md、CLAUDE.md、Cursor Rules 或个人记忆里。它必须能被分层、合并、导入、审查、快照和迁移。
-
-Profile 负责描述：
-
-- 团队规则。
-- 项目结构。
-- 架构边界。
-- 领域语言。
-- 验证命令。
-- 历史决策。
-- 输出风格。
-- 风险提示。
-
-Profile 不负责：
-
-- 声明能力本身；这属于 `Skill` 或 `Adapter`。
-- 执行权限控制；这属于 `Policy`。
-- 编排阶段；这属于 `Flow`。
-- 记录某次执行的实际上下文 hash；这属于 `Run.snapshot`。
-
-## v1alpha1 字段
-
-| 字段 | 要求 | 说明 |
+| 字段 | 要求 | Schema 语义 |
 | --- | --- | --- |
-| `spec.layers` | 必填，至少 1 个 | 分层上下文数组。 |
-| `spec.layers[].name` | 必填 | layer 名称，例如 `style`、`commands`、`architecture`、`risk`。 |
-| `spec.layers[].data` | 条件必填 | 结构化上下文。`data` 或 `content` 至少存在一个。 |
-| `spec.layers[].content` | 条件必填 | 自然语言上下文。`data` 或 `content` 至少存在一个。 |
-| `spec.merge` | 可选，开放结构 | 合并策略。v1alpha1 不固定具体 DSL。 |
-| `spec.policyRefs` | 可选 | 关联 Policy，但不内联权限规则。 |
-| `status` | 可选 | import、merge、review 或 conflict 的状态。 |
+| `spec.layers` | 必填，至少 1 项 | layer 数组。 |
+| `spec.layers[].name` | 必填 | 字符串。 |
+| `spec.layers[].data` | 条件必填 | 开放对象。`data` 与 `content` 至少存在一个。 |
+| `spec.layers[].content` | 条件必填 | 字符串。`data` 与 `content` 至少存在一个。 |
+| `spec.merge` | 可选 | 开放对象；v1alpha1 未定义 merge DSL。 |
+| `spec.requirements` | 可选 | 该上下文的外部依赖数组。 |
+| `spec.policyRefs` | 可选 | local object reference 数组。 |
+| `status` | 可选 | 通用状态；import 命令会写入 conditions。 |
 
-`layers[].data` 允许任意结构化字段，因为不同项目的上下文形状不同。能进入公共标准的结构化字段，必须先在真实 workflow 中产生重复证据。
+layer item 本身不允许 `name`、`data`、`content` 之外的字段；扩展结构应放在 `data` 内。schema 允许一个 layer 同时包含 `data` 与 `content`。
 
-## 最小合法示例
+## 合法示例
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
 kind: Profile
 metadata:
-  name: project-profile
+  name: huoban-open-source-project
+  generation: 1
 spec:
   layers:
-    - name: style
+    - name: architecture
       data:
-        preferSmallChanges: true
-        avoidUnrelatedRefactor: true
+        architectureStyle: spec-first
       content: |
-        Prefer small surgical changes. Do not refactor unrelated code.
-    - name: commands
-      data:
-        testCommand: npm test
-      content: |
-        Run npm test before finalizing changes.
+        Prefer defining API objects before runtime behavior.
+  requirements:
+    - id: repository-guidance
+      type: contextSource
+      origin: declared
+      target:
+        path: examples/import/AGENTS.md
 ```
 
-参考 example：`examples/profiles/project-profile.yaml`。
+对应 source example：`examples/profiles/huoban-open-source-project.yaml`。
 
-## 验证规则
+## 当前 CLI 行为
 
-validator 至少应检查：
+### Import 与 export
 
-- `kind` 必须是 `Profile`。
-- `spec.layers` 至少包含一个 layer。
-- 每个 layer 必须有 `name`。
-- 每个 layer 必须至少有 `data` 或 `content`。
-- `policyRefs` 只能引用本地对象形状；是否存在由 workspace-level validation 判断。
-- 从 Markdown 导入的结构化字段如果是推断出来的，应写入 `ImportNeedsReview` condition。
+```bash
+npm exec -- huoban import AGENTS.md --as Profile --out profiles/project.yaml
+npm exec -- huoban export profiles/project.yaml --to AGENTS.md --out AGENTS.md
+```
 
-## 合并建议
+当前 import 只支持 `--as Profile`。它按 Markdown heading 和关键词归入 `style`、`commands`、`risk` 或 `source` layer，并写入 `ProfileImported=True` 与 `ImportNeedsReview=True`。这是确定性规则推断，不代表生成内容可信。
 
-v1alpha1 schema 允许 `merge` 为开放结构，但实现者应保持可解释：
+当前 export 只支持 `--to AGENTS.md`，会输出 layer data/content 和已有 conditions，并在文件中提示 review。
 
-- 按 `profileRefs` 顺序应用。
-- 同名 layer 可以合并，但冲突必须可见。
-- scalar 覆盖、list append 或 replace 策略必须可解释。
-- 生成 effective Profile 时应能计算 hash，并写入 Run snapshot。
+### Policy 派生
 
-这些是实现建议，不是新的 schema 字段承诺。
+```bash
+npm exec -- huoban derive policy profiles/project.yaml --out policies/project-risk.yaml
+```
 
-## 与相邻对象的边界
+derive 读取第一个 `name: risk` layer 的 `data.requiresApproval`。该值必须是非空数组；输出一个 `unknownSideEffect: requireApproval` 的 Policy 和一条去重后的 `requireApproval` rule，并写入 `PolicyNeedsReview=True`。它不会自动执行该 Policy。
 
-| 容易混淆 | 边界 |
+### Preflight
+
+当前 Preflight 将 Flow 的默认 profile refs 与 Run refs 按名称合并，Run 中同名引用覆盖 Flow 引用。它检查 Profile 引用/generation、Profile Requirement 和 `policyRefs` 是否可解析，但不计算 effective Profile，也不执行 `spec.merge`。
+
+## 验证边界
+
+- `validate` 只检查 layer 形状，不解释 `data` 的项目私有字段。
+- schema 不要求 layer 名唯一，也不定义 layer 顺序或冲突规则。
+- `spec.merge` 是开放对象；当前 CLI 没有 merge 实现。
+- `policyRefs` 的形状合法不代表目标存在；Preflight 只检查当前 Run 可达的 Profile。
+- import/export 生成的 Markdown 或结构化推断必须 review，不能直接当作可信协议事实。
+
+## 相邻概念边界
+
+| 容易混淆 | 精确边界 |
 | --- | --- |
-| `Profile` / `Policy` | Profile 影响判断标准；Policy 控制副作用、审批和权限。 |
-| `Profile` / `Skill` | Profile 是上下文；Skill 是能力。 |
-| `Profile` / `Adapter` | 上下文-only 文件导入为 Profile；外部能力或工具流程导入为 Adapter。 |
-| `Profile` / `Run` | Profile 是可复用上下文对象；Run 锁定某次执行实际使用的 Profile 引用和 hash。 |
+| Profile / Policy | Profile 提供上下文；Policy 声明副作用、审批与权限边界。 |
+| Profile / Skill | Profile 改变能力所处上下文；Skill 声明能力。 |
+| Profile / Adapter | 上下文文件导入为 Profile；外部能力或导入格式由 Adapter 描述。 |
+| Profile / Run | Profile 可复用；Run 锁定本次引用，并在 snapshot 中记录 `profileRefHash`。 |
+| Requirement / layer content | Requirement 声明环境依赖；layer 保存要注入的上下文。 |
 
 ## 常见错误
 
-- 把 `publishRemote`、`modifyGitHistory` 这类权限规则只写在 Profile 自然语言里。应派生或手写 `Policy`。
-- 把外部工具调用步骤写进 Profile。应使用 `Adapter` 或 `Flow`。
-- 把团队私有实践写成公共标准字段。应先保留在 `layers[].data`。
-- 合并 Profile 时静默覆盖冲突。应写入 condition 或让用户审查。
-
-## 活字印刷位置
-
-Profile 对应“墨方”。同一枚活字在不同墨色下会呈现不同效果；同一个 Skill 在不同 Profile 下会产生不同判断。Profile 让 Huoban 可润墨。
+- 在 layer item 顶层发明字段，而不是放入 `data`。
+- 同时漏掉 `data` 和 `content`。
+- 把权限只写成 risk layer 自然语言，却声称已获得 Policy enforcement。
+- 声称 `spec.merge` 已有标准合并语义；当前 schema 和 CLI 都没有。
+- 把 import 结果直接当作可信对象，忽略 `ImportNeedsReview`。
+- 把 Run 的 `profileRefHash` 写成不存在的 `profileSpecHash`。

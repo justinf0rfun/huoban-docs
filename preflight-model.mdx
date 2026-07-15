@@ -1,0 +1,143 @@
+---
+title: "Preflight 执行前预检"
+sidebarTitle: "Preflight"
+description: "Preflight 在执行前解析 Run、bindings 与 Requirement，形成可审计的机械就绪证据。"
+---
+
+`Preflight` 是 execute 之前的机械就绪门。它回答：本次 `Run` 引用的对象能否解析、每个 stage 与 lifecycle handler 是否已有实现 binding、实现声明的 Requirement 在当前 workspace 和环境中是否可用。
+
+Preflight **不是顶层 kind**。检查结果写入 `Run.status.conditions`、`Run.status.preflight`，详细证据保存为 `type: huoban.dev/preflight-report` 的 `Artifact`。
+
+<CardGroup cols={2}>
+  <Card title="先解析，再检查" icon="search-check" type="tip" color="#16A34A">
+    Resolution 记录目标声明和引用解析结果；Readiness 记录当前环境检查结果。
+  </Card>
+  <Card title="证据绑定 Run" icon="fingerprint" type="tip" color="#16A34A">
+    报告记录 Run scope、`Run.spec` 的 snapshot hash、检查时间和逐项结果。
+  </Card>
+  <Card title="默认离线" icon="wifi" type="tip" color="#16A34A">
+    默认只做本地、只读检查；`--live` 才允许对远程 context source 发起只读 `HEAD`，并对 MCP server 做有限发现请求。
+  </Card>
+  <Card title="不等于授权" icon="shield-check" type="tip" color="#16A34A">
+    `PreflightReady=True` 只记录机械就绪观察，不表示 Policy、Trust 或 Checkpoint 已放行。
+  </Card>
+</CardGroup>
+
+## 完整执行前链路
+
+<Steps>
+  <Step title="Validate">
+    校验对象字段形状。Schema 不能证明 workspace 中的引用或外部服务真实存在。
+  </Step>
+  <Step title="Explain 与 dry-run">
+    解释对象关系并生成计划态 `Run`。允许动态依赖仍为 `Unknown`。
+  </Step>
+  <Step title="Preflight">
+    对锁定的 Run 解析 refs、bindings、Requirement 和 required lifecycle handler，生成结构化证据。
+  </Step>
+  <Step title="Policy、Trust 与 Checkpoint">
+    在机械就绪之后处理副作用、来源信任和显式决策边界。
+  </Step>
+  <Step title="Execute">
+    只有 Run scope 的 `PreflightReady=True` 且其他治理门已满足，执行器才可以启动。
+  </Step>
+</Steps>
+
+`dryRun` 不等于 Preflight，Preflight 也不等于授权。三者回答不同问题：计划是什么、环境是否就绪、行为是否允许。
+
+## Run scope 与 stage scope
+
+Run scope 检查完整 Run；stage scope 只用于定位某个阶段的阻塞原因。
+
+```bash
+node ./bin/huoban.js preflight \
+  examples/generated/idea-to-spec-review-dry-run.yaml \
+  --workspace "examples/**/*.yaml" \
+  --offline \
+  --out /tmp/idea-to-spec-review-preflighted.yaml \
+  --report /tmp/preflight-report.yaml
+```
+
+```bash
+node ./bin/huoban.js preflight \
+  examples/generated/idea-to-spec-review-dry-run.yaml \
+  --workspace "examples/**/*.yaml" \
+  --stage draft-spec-outline \
+  --offline \
+  --out /tmp/draft-spec-outline-preflighted.yaml \
+  --report /tmp/draft-spec-outline-preflight-report.yaml
+```
+
+stage scope 成功不能授权整次 Run。当前 CLI 可以为局部成功返回退出码 0，但会明确提示该结果不构成 Run gate；execute gate 必须读取同一 `Run.spec` 对应的 Run scope 证据。
+
+## Resolution 与 Readiness
+
+每个 check 分成两个正交状态：
+
+| 状态 | 问题 | 例子 |
+| --- | --- | --- |
+| Resolution | 目标是否声明完整、引用能否定位？ | binding 指向的 Skill 是否存在且提供所需 capability。 |
+| Readiness | 当前环境是否满足目标？ | executable 是否可执行、MCP tool 是否能被发现。 |
+
+二者都使用 `True`、`False`、`Unknown`：
+
+- `False`：检查得到明确的不满足结果。
+- `Unknown`：当前检查模式无法得出权威结论。例如 offline 模式不会联网发现 MCP tool。
+- `True`：检查在当前范围与时刻观察到满足。
+
+必需依赖出现 `False` 时，聚合 condition 为 `False`；出现 `Unknown` 且没有 `False` 时，聚合 condition 保持 `Unknown`。二者都会阻断 execute gate。可选依赖仍记录证据，但不单独阻断。
+
+## Offline 与 live
+
+默认 offline 是安全边界，不只是性能选项。
+
+| 模式 | 行为 |
+| --- | --- |
+| 默认 / `--offline` | 检查 schema、workspace refs、路径、executable、credential 名称和 runner capability；动态网络目标通常保留 `Unknown`。 |
+| `--live` | 对远程 context source 执行只读 `HEAD`；对声明的 MCP endpoint 执行有限、只读、超时受控的 initialize 与 discovery；不调用业务 tool。 |
+
+live Preflight 不执行 `tools/call`。远程 context source 只允许 `HEAD`。MCP 请求每次最多等待 5 秒、列表发现最多读取 20 页、单次响应体上限为 1 MiB。报告会去除 URL user info、query、fragment、常见 credential 形式和远端 MCP error text。网络可达也不代表来源可信或行为已获授权。
+
+## Freshness 与失效
+
+动态事实会变化。Requirement 的 `freshness.maxAgeSeconds` 用来计算报告的 `validUntil`。执行器不得复用已过期报告，也不得把不同 `Run.spec` 的报告套用到当前 Run。
+
+`snapshotHash` 哈希的是当前 `Run.spec`，用于关联报告与 Run 声明。权威 Preflight 还会逐项重算 `flowSpecHash`、`profileRefHash`、`policyRefHash` 和 `bindingHash`。这些 hash 不归档被绑定 Skill 或 Adapter 的完整内容，报告本身也未签名；执行实现仍需使用可信时钟、比较 hash 并拒绝过期或被修改的证据。
+
+## 证据落点
+
+Preflight 的最小证据链包括：
+
+1. `Run.status.conditions` 中的 `Resolved` 与 `PreflightReady` 摘要。
+2. `Run.status.preflight` 中的 scope、snapshotHash、checkedAt、可选 validUntil 与 reportRef。
+3. Preflight Report Artifact 中的逐项 checks。
+
+```yaml
+status:
+  conditions:
+    - type: PreflightReady
+      status: "True"
+      reason: DependenciesReady
+  preflight:
+    scope:
+      type: run
+    snapshotHash: sha256:...
+    checkedAt: 2026-07-15T00:00:00.000Z
+    reportRef:
+      kind: Artifact
+      name: idea-to-spec-review-dry-run-preflight-report
+```
+
+详细字段见 [Preflight 规范](/spec-preflight)。
+
+## 失败语义
+
+执行前缺失依赖属于 `Blocked`，不是 stage 业务失败。此时 stage 尚未开始，不能伪造 `stage.failed`，也不能创建 Checkpoint 让人“批准忽略”必需依赖。
+
+fallback 只有在 Run 中显式锁定、能力匹配且同样通过 Preflight 时才可用。临时热切换实现会使现有报告与 Run snapshot 失真。
+
+## 当前实现边界
+
+reference CLI 已实现 schema/引用/binding/Requirement 检查、offline/live MCP discovery、报告 Artifact 和 execute gate 判断。它没有实现依赖安装、Policy evaluator、Trust evaluator、Checkpoint 工作流或完整执行 runtime。
+
+继续阅读：[Preflight 规范](/spec-preflight)、[Run 模型](/run-model)、[安全边界](/security)、[示例：Preflight 与 Lifecycle](/example-preflight-lifecycle)。

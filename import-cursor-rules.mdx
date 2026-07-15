@@ -1,74 +1,75 @@
 ---
 title: "导入 Cursor Rules"
 sidebarTitle: "导入 Cursor Rules"
-description: "把 Cursor Rules 迁移为分层 Huoban Profile。"
+description: "逐文件使用通用 Markdown importer，并明确当前没有目录 parser、规则合并器或 Cursor exporter。"
 ---
 
-# 导入 Cursor Rules
+当前 CLI 接受单个文件，不接受 `.cursor/rules` 目录。它也没有 Cursor 专用 parser，不解释 glob、`alwaysApply`、frontmatter 优先级或多文件合并语义。
 
-Cursor Rules 通常比单个 Markdown 文件更分散：可能按目录、文件类型、任务类型或团队规范拆分。
+## 单文件导入
 
-Huoban 应把它们导入为多层 `Profile`，保留每条 rule 的来源和适用范围。
-
-## 命令
+对一个 `.mdc` 文件，可以使用通用 Markdown importer：
 
 ```bash
+npm exec -- huoban import .cursor/rules/frontend.mdc --as Profile --out profiles/frontend-profile.yaml
+npm exec -- huoban validate profiles/frontend-profile.yaml
+npm exec -- huoban explain profiles/frontend-profile.yaml
+```
+
+`.mdc` 后缀不会触发专用行为。CLI 读取文本、按通用标题/内容规则生成 `style`、`commands`、`risk` 或 `source` layer，并写入 `ImportNeedsReview=True`。
+
+## 不支持目录导入
+
+下面的旧写法当前不可用：
+
+```text
 huoban import .cursor/rules --as Profile --out profiles/cursor-profile.yaml
 ```
 
-## 导入原则
+原因是 input 必须是一个可读文件。对于多个 rule 文件有两种保守方案：
 
-- 每个 rule 文件保留来源路径。
-- 按适用范围生成 layer 或 layer metadata。
-- 不确定的 pattern / glob 不强行简化。
-- 工具特定行为保留为 `content`，跨工具语义进入 `data`。
+1. 每个文件导入为独立 Profile，逐个 validate 和 review。
+2. 手工合并为一个 Profile，并把每条原文保留在独立 layer 的 `content` 中。
 
-## 示例
+当前 CLI 没有 Profile merge 命令。不要声称它会自动保留 Cursor 的 rule precedence。
+
+## schema 边界
+
+`Profile.spec.layers[]` 当前只定义：
 
 ```yaml
-apiVersion: huoban.dev/v1alpha1
-kind: Profile
-metadata:
-  name: cursor-rules-profile
-spec:
-  layers:
-    - name: frontend-style
-      appliesTo:
-        paths:
-          - "src/**/*.tsx"
-      data:
-        preferExistingComponents: true
-      content: |
-        Reuse existing design system components before creating new ones.
-      source:
-        path: .cursor/rules/frontend.mdc
-    - name: testing
-      appliesTo:
-        paths:
-          - "**/*.test.ts"
-      data:
-        testFramework: vitest
-      content: |
-        Use Vitest patterns already present in the repository.
-      source:
-        path: .cursor/rules/testing.mdc
+- name: string
+  data: {}
+  content: string
 ```
 
-## 导出
+每个 layer 必须有 `name`，并至少包含 `data` 或 `content`。`appliesTo`、`source`、`globs` 不是 layer 顶层协议字段。
+
+如果项目需要保留 Cursor metadata，可以把原始 frontmatter 留在 `content`，或放入项目私有 `data`。后者只是项目数据，不应被描述成 Huoban 标准语义。
+
+## 手工合并检查
+
+合并后的 Profile 至少检查：
+
+- 每条 rule 原文仍可追溯到来源文件。
+- glob 与作用域没有被通用 importer 错误简化。
+- 相互冲突的 rules 没有被静默覆盖。
+- 风险与权限规则进入独立 Policy。
+- 对本地文件或远程 context 的运行时依赖进入 `Profile.spec.requirements`。
+
+然后运行：
 
 ```bash
-huoban export profiles/cursor-profile.yaml --to cursor-rules
+npm exec -- huoban validate profiles/cursor-profile.yaml
+npm exec -- huoban explain profiles/cursor-profile.yaml
 ```
 
-导出时应尽量保留原本的文件拆分。如果无法还原，应生成清晰的新规则文件并标明来源。
+## 导出边界
 
-## 与 AGENTS.md 的差异
+当前 CLI 没有 `--to cursor-rules`。唯一支持的 export target 是 `AGENTS.md`。保留原始 Cursor Rules，直到有真实 round-trip workflow 和可验证 fixture 支持更强声明。
 
-`AGENTS.md` 通常是单文件 profile。Cursor Rules 更像多 layer profile。
+## 下一步
 
-因此 Cursor import 的重点是：
-
-- 保留每条规则的作用范围。
-- 保留路径条件。
-- 保留工具特定 metadata。
-- 把可共享语义抽成标准 Profile data。
+- [导入 AGENTS.md](/import-agents-md)
+- [Profile 规范](/spec-profile)
+- [标准化路径](/standardization)

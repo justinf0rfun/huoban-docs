@@ -1,73 +1,124 @@
 ---
 title: "FAQ"
 sidebarTitle: "FAQ"
-description: "Huoban 的定位、边界和与 MCP、runner、skills、AGENTS.md 的关系。"
+description: "Huoban 的对象边界、dry-run、Preflight、Lifecycle、迁移和当前 runtime 状态。"
 ---
-
-# FAQ
 
 ## Huoban 是什么？
 
 Huoban 是 AI 系统的开放编排协议：可排版、可润墨、可印刷。
 
-更具体地说，Huoban 定义 AI 原生工作的共享对象模型：`Skill`、`Profile`、`Flow`、`Run`、`Checkpoint`、`Policy`、`Adapter`、`Artifact`、`Registry` 和 `Trust`。
+Huoban 活板的设计哲学来自活字印刷术。协议用 10 个顶层 kind 描述能力、上下文、编排、执行快照、决策、安全、外部能力、产物、发现和信任。
+
+## 10 个顶层 kind 是哪些？
+
+`Skill`、`Profile`、`Flow`、`Run`、`Checkpoint`、`Policy`、`Adapter`、`Artifact`、`Registry`、`Trust`。
+
+`Requirement`、Preflight、Lifecycle Handler、Lifecycle Event Envelope 和 Preflight Report 不是 kind；它们是嵌入式协议构件。
 
 ## Huoban 是 agent runner 吗？
 
-不是。
+不是。当前仓库没有 agent execution runtime，也没有 `execute` CLI。它提供 schema、examples、validate、explain、迁移、dry-run print 和 Preflight reference implementation。
 
-Huoban 可以有 reference runtime，但项目核心不是 runner。Huoban 首先定义对象模型、schema、兼容等级和迁移路径。不同 runtime、IDE、agent 平台或 MCP server 都可以实现 Huoban。
+## 正确的执行准备顺序是什么？
 
-## Huoban 和 MCP 是什么关系？
+```text
+validate -> explain / print dry-run -> preflight -> Policy / Trust / Checkpoint -> execute
+```
 
-MCP 是工具和上下文连接协议。Huoban 是 AI 工作的对象模型和编排协议。
+当前仓库停在 execute 之前。
 
-两者可以互补：
+## dry-run 与 Preflight 有什么区别？
 
-- Huoban 可以通过 MCP 暴露对象、validate、explain、import、export。
-- MCP tool 可以通过 Adapter 进入 Huoban 对象模型。
-- Huoban 的 Trust / Policy / Side Effects 可以补足工具调用的治理边界。
+`print --dry-run` 从 Flow 生成 `mode: dryRun` 的 Run，锁定 refs、bindings 与四个 snapshot hashes。它不检查环境。
 
-## Huoban 会替代 AGENTS.md、CLAUDE.md 或 Cursor Rules 吗？
+Preflight 读取 Run 和 workspace，分别记录 dependency resolution 与 readiness，并生成 Preflight Report Artifact。两步不能互相替代。
 
-不会。
+## PreflightReady=True 是否表示可以执行？
 
-这些文件是 profile file。Huoban Profile 是 profile object。
+不表示授权。它只是 readiness 前置条件。
 
-Huoban 的目标是支持导入和导出，让现有上下文资产升级为可分层、可合并、可校验、可快照的对象，同时保留回到原格式的能力。
+`execute` Run 还必须通过 Policy、Trust、Checkpoint、sandbox、平台权限和采用方自己的授权流程。
 
-## Huoban 会替代 Claude Code skills 或 Codex skills 吗？
+## stage Preflight 能否授权整个 Run？
 
-不会。
+不能。`StagePreflightReady=True` 只适用于指定 stage。`execute` 需要 Run scope 的 `PreflightReady=True`。
 
-现有 skill 生态是 Huoban 的活字来源。Huoban 通过 Adapter 把外部 skill 标准化，补齐 capability、输入输出、side effects、checkpoint 和 trust 信息。
+## Preflight 默认会联网吗？
 
-## 为什么第一步是 Profile import，而不是 run？
+不会。默认 offline。
 
-因为大量 AI coding power user 已经有上下文资产，但这些资产散落在项目文件、规则文件和聊天习惯里。
+只有显式 `--live` 才会访问声明的 remote context 或 MCP endpoint。即使 live，CLI 也只做 `HEAD`、MCP initialize 和有界 list discovery，不调用 MCP tool。
 
-Profile import 能立刻把现有资产变成标准对象，采用成本低，也能证明 Huoban 的核心价值：把隐性 workflow 显性化。
+## inferred Requirement 如何 review？
 
-## 为什么要区分 Profile 和 Policy？
+schema 要求 inferred Requirement 写 `reviewStatus`。`needsReview` 会让 Preflight resolution/readiness 保持 `Unknown`。
 
-Profile 是墨方，影响 agent 判断。Policy 是印坊规矩，决定行为边界。
+当前 CLI 没有 review 命令，也不会自动把它迁移为 `accepted`。采用方必须显式定义 review 与记录流程。
 
-如果混在一起，偏好、上下文和安全规则会变得不可审计。
+## Lifecycle Handler 是 hook 吗？
 
-## 为什么 Flow 应引用 capability，而不是直接引用 Skill？
+不是任意 hook。`on` 必须来自 `v1alpha1` 有限事件枚举，handler 必须声明 delivery、role、capability、timeout 和 bounded retry。
 
-Capability-first 让 Flow 更可移植。
+它只用于观察、上报和清理。状态改变属于 stage，决策属于 Checkpoint，权限属于 Policy，外部能力属于 Adapter。
 
-Flow 表达“需要设计审查能力”，Run 或 runtime 再解析具体 Skill / Adapter。这让不同团队、不同 runtime 可以用不同实现执行同一个 Flow。
+## 当前会派发 lifecycle event 吗？
 
-## Huoban 什么时候需要完整 runtime？
+不会。当前只有声明、Run role binding、Preflight、explain 和 invocation status 形状，没有 dispatcher/runtime。
 
-不是第一优先级。
+## Handler 如何绑定实现？
 
-早期更重要的是：对象模型、schema、validate、explain、import、export、dry-run、examples 和 conformance。完整 runtime 应在标准语言稳定后再推进。
+Flow handler 的 `requires.role` 对应 `Run.spec.bindings` 的 key。例如 `stage-reporter` 在 Run 中绑定 `Adapter/stage-reporting-mcp`。
 
-## Huoban 的成功指标是什么？
+## fallback 写在哪里？
 
-早期不应只看 stars 或 downloads。
+写在 Run binding：
 
-更好的指标是：非核心贡献者开始写外部 Huoban 对象，例如 Flow、Profile、Adapter、第三方 validator、第三方 runtime 实验和 capability taxonomy 讨论。
+```yaml
+bindings:
+  primary-review:
+    adapterRef: grill-me-skill-md
+    fallback:
+      skillRef: design-review
+```
+
+Flow 不保存 fallback。当前 CLI 能通过 `--fallback` 锁入 dry-run Run；Preflight 以与主 binding 相同的 requiredness 检查 fallback 的 capability、Requirement 和关联引用。当前仓库不会执行自动切换。
+
+## Run 有哪些 hash？
+
+`Run.spec.snapshot` 有：
+
+- `flowSpecHash`：Flow spec。
+- `profileRefHash`：Profile refs 数组。
+- `policyRefHash`：Policy refs 数组。
+- `bindingHash`：bindings 对象。
+
+Preflight report 的 `snapshotHash` 另行哈希整个 `Run.spec`。
+
+## Huoban 能导入哪些格式？
+
+当前 `import` 接受一个文件，唯一 target 是 `Profile`。因此 AGENTS.md、CLAUDE.md 或单个 `.mdc` 都可以经过通用 Markdown importer，但只有 AGENTS.md 有 public golden fixture。
+
+当前没有 Cursor directory parser，也没有 `SKILL.md -> Adapter` import。
+
+## Huoban 能导出哪些格式？
+
+当前唯一 export target 是 `AGENTS.md`，并要求 `--out`。CLAUDE.md 与 Cursor Rules round trip 尚未实现。
+
+## Huoban 与 MCP 是什么关系？
+
+MCP 描述工具和上下文连接；Huoban 描述 AI 工作对象与编排边界。MCP tool 可以通过 Adapter 进入 Huoban。
+
+当前 Huoban CLI 只在 opt-in live Preflight 中做 MCP discovery；它不提供 Huoban MCP server，也不调用 MCP tool。
+
+## 为什么区分 Profile 与 Policy？
+
+Profile 是分层上下文，影响判断环境。Policy 是副作用、审批和权限规则。把两者混在自然语言里会削弱审计与执行边界。
+
+## 为什么 Flow 引用 capability 而不是具体 Skill？
+
+Flow 表达可复用版式。Run 再把 role 绑定到具体 Skill 或 Adapter，使同一个 Flow 可以在不同环境使用不同实现，同时保留锁定快照。
+
+## public examples 在哪里？
+
+在 `huoban` source repo 的 `examples/`。文档中的 `examples/...` 是 source tree 路径，不是文档站 URL；[示例章节](/examples-overview) 内嵌关键完整 YAML。

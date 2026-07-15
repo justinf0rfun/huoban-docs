@@ -7,26 +7,34 @@ icon:
   library: "lucide"
 ---
 
-# 标准化路径
+Huoban 遵循 **standard-first、runtime-later**：先稳定可验证的对象语言与证据契约，再让不同 agent、tool、MCP server 和 runner 对它做解释与绑定。
 
-Huoban 是 standard-first、runtime-later。
-
-目标是定义一套 AI 原生工作的共享对象模型，让不同 agent、tool、skill、MCP server 和项目上下文可以互相理解。Huoban 当前优先建设标准对象、schema、examples 和解释能力；reference runtime 应该晚于对象模型验证。
+<CardGroup cols={3}>
+  <Card title="对象先于实现" icon="braces">
+    先定义身份、引用、字段和边界，不把某个 runner 的内部结构提升为协议。
+  </Card>
+  <Card title="证据先于承诺" icon="file-check-2">
+    每项语义都必须落到 schema、example、CLI 输出或可审计状态。
+  </Card>
+  <Card title="重复先于晋升" icon="repeat-2">
+    私有实践只有在多个真实 workflow 中重复出现，才进入公共标准。
+  </Card>
+</CardGroup>
 
 ## 标准边界
 
-公共标准应该定义：
+公共标准负责定义：
 
 - 对象种类和 schema。
-- 对象语义。
-- 必填字段和可选字段。
-- 兼容等级。
-- 验证行为。
-- import/export 预期。
-- trust 和 policy 边界。
-- 能展示真实工作流的 examples。
+- 身份、引用、必填字段、可选字段与兼容等级。
+- 验证、解释、导入和导出行为。
+- `Trust`、`Policy` 与 `Checkpoint` 的边界。
+- `Requirement` 的依赖类型、来源、审阅状态和 freshness。
+- `Preflight` 的 resolution、readiness、作用域、条件与证据格式。
+- `Lifecycle Handler` 的有限事件、delivery、binding、超时、重试和状态语义。
+- 能端到端复现真实工作流的 examples。
 
-公共标准不应该定义：
+公共标准不负责定义：
 
 - 唯一 runner。
 - 唯一 agent。
@@ -35,11 +43,15 @@ Huoban 是 standard-first、runtime-later。
 - 某一套私有工具链。
 - 适合所有项目的万能 workflow。
 
-公司实践在证明可复用之前，应该先留在 `Profile`、`Policy`、`Adapter`、`Flow` 和 `Run` 对象里。
+公司实践在证明可复用之前，留在私有 `Profile`、`Policy`、`Adapter`、`Flow` 与 `Run` 中。
+
+<Info>
+  `Requirement`、`Preflight` 和 `Lifecycle Handler` 是跨对象协议结构，不是新的顶层 Kind。只有拥有独立身份、生命周期、引用关系和治理边界的概念，才应该晋升为 Kind。
+</Info>
 
 ## 进入核心标准的条件
 
-一个能力或字段进入核心标准前，必须同时满足：
+一个字段、枚举或协议结构进入核心标准前，必须同时满足：
 
 - 在至少两个真实 workflow 中出现。
 - 不绑定某一家公司、某一个仓库或某一个 agent。
@@ -48,71 +60,107 @@ Huoban 是 standard-first、runtime-later。
 - 可以被 CLI 解释。
 - 提升的是互操作性，而不只是方便某一个实现。
 
-如果这些条件不满足，就先把它留在 extension、example、adapter 或私有 project profile 中。
+如果证据不足，把它留在 extension、example、`Adapter` 或私有 `Profile` 中。不要用“以后可能需要”代替重复证据。
 
 ## 对象稳定等级
 
-Huoban 应该用稳定等级避免把所有想法都伪装成成熟标准。
-
-| Level | 含义 | 适用场景 |
+| 等级 | 兼容含义 | 适用范围 |
 | --- | --- | --- |
-| `experimental` | 形状还在验证。 | 公司项目、examples、设计讨论。 |
-| `draft` | 语义基本稳定。 | 早期公共用户和 adapter 作者。 |
-| `stable` | 需要兼容性承诺。 | 公共标准和跨 runner 支持。 |
-| `deprecated` | 已被替代但仍可识别。 | 迁移期和兼容窗口。 |
+| `experimental` | 形状仍可重构，不承诺兼容。 | 私有实践、examples、设计验证。 |
+| `draft` | 语义已经可实施，变更必须说明迁移影响。 | 早期公共实现与 adapter 作者。 |
+| `stable` | 字段和行为进入兼容性承诺。 | 跨实现、跨 runner 的公共协议。 |
+| `deprecated` | 仍可识别，但不得用于新对象。 | 有期限的迁移窗口。 |
 
-当前仓库可以继续使用 `v1alpha1` schema，同时让对象模型保持 `experimental` 或 `draft` 状态。
+当前 schema 版本是 `v1alpha1`。它已经是可验证、可实现的协议版本，但仍属于 alpha 兼容阶段；新增语义必须同步更新 schema、examples、CLI、规范参考和迁移说明。
+
+## 验证链
+
+协议对象从“可解析”到“可执行”经过不同层次，任何一层都不能替代下一层。
+
+<Steps>
+  <Step title="Schema 验证">
+    `npm run validate` 验证 Kind、字段、引用形状和有限枚举。通过只表示对象结构合法。
+  </Step>
+  <Step title="语义解释">
+    `npm run explain` 展示 workspace 关系、requirements、lifecycle handlers 和 Run 证据，供人和 agent 审查。
+  </Step>
+  <Step title="锁定执行快照">
+    `npm run print:dry-run` 把 Flow、Profile、Policy 与实现 binding 固定为 `Run`。它不执行业务能力。
+  </Step>
+  <Step title="执行前预检">
+    `npm run preflight` 分开计算 resolution 与 readiness，并写入 Run conditions 和 Preflight Report Artifact。
+  </Step>
+  <Step title="授权与执行">
+    runtime 只有在 Run 级 `PreflightReady=True` 后，才能考虑 `Policy`、`Trust`、`Checkpoint` 与执行授权。Preflight 本身不是授权。
+  </Step>
+</Steps>
+
+<Warning>
+  stage 级 Preflight 只能诊断局部依赖，不能授权整次 Run；省略 `Run.spec.mode` 时按 `execute` 处理，同样必须通过 Run 级门禁。
+</Warning>
 
 ## 发布就绪标准
 
 一次公开发布至少应该满足：
 
-- `npm run validate` 通过。
+- `npm test` 全量通过，生成文件与命令输出一致。
+- 所有公开 schema 能独立编译，完整 examples 全部通过 `npm run validate`。
 - `npm run explain` 能给出连贯的 workspace 视图。
-- `npm run print:dry-run` 能生成有效 Run。
-- README / 简介能解释对象模型和 quickstart。
+- `npm run print:dry-run` 能生成有效、可复现的 Run。
+- `npm run preflight` 能生成有效 conditions 与 Preflight Report Artifact。
+- required 动态依赖在离线检查中保持 `Unknown`，不会被伪装为可用。
+- `execute` Run 只有在 Run 级 `PreflightReady=True` 时才可被 runtime 接受。
+- Lifecycle Handler 只使用固定事件枚举，并有 required 与 best-effort 的可验证示例。
+- README、简介、模型页和规范参考使用同一套术语与字段。
 - `llms.txt` 能给 AI agent 提供可靠入口。
-- 设计哲学清楚，且不暴露内部竞争类比。
-- 标准边界和公司实践边界明确。
+- 变更记录说明兼容影响与迁移路径。
 
 ## 实践反馈循环
 
-Phase 3 和 Phase 4 应该把 Huoban 放进真实公司项目里验证。
-
-反馈循环应该是：
-
-1. 用私有 `Profile`、`Policy`、`Adapter` 和 `Flow` 捕获公司 workflow。
-2. 执行前先 print dry-run `Run`。
-3. 记录需要人类判断的 checkpoint。
-4. 捕获 artifact 和 observed side effects。
-5. 比较多个 workflow 中重复出现的模式。
-6. 只把可复用模式提升到公共标准。
-7. 把公司特定判断继续留在私有 profile 和 policy 中。
-
-这样可以防止标准太空，也可以防止标准被某一个环境污染。
+<Steps>
+  <Step title="捕获私有实践">
+    用私有 `Profile`、`Policy`、`Adapter` 和 `Flow` 描述公司 workflow，并明确 requirements。
+  </Step>
+  <Step title="锁定并预检">
+    先生成 dry-run Run，再对锁定快照执行 Run 级 Preflight。推断出的 Requirement 必须经过 review。
+  </Step>
+  <Step title="保留事实链">
+    用 `Checkpoint` 记录决策，用 `Artifact` 保存产物与 Preflight 报告，用 lifecycle invocation 记录有限事件的投递结果。
+  </Step>
+  <Step title="比较重复证据">
+    比较多个 workflow 中反复出现的字段、事件和失败模式，区分公共语义与公司约定。
+  </Step>
+  <Step title="晋升或保留">
+    只把跨环境可验证的结构提升到公共标准；公司特定判断继续留在私有 Profile 与 Policy。
+  </Step>
+</Steps>
 
 ## 公司项目中要验证什么
 
-公司实践应该重点验证这些问题：
+真实项目应当回答：
 
 - `Profile` 是否能让 agent 比散落的 Markdown 更快理解项目？
 - 风险动作是否能被清楚表达成 `Policy`？
 - `AGENTS.md`、`CLAUDE.md`、Cursor Rules 和 `SKILL.md` 是否能通过 `Adapter` 或 `Profile` 保留原意？
 - `Flow` 是否能描述真实工作，而不是把逻辑藏进 prompt？
 - `Run` snapshot 是否能让 AI 工作在事后可审查？
-- checkpoint 是否能在正确位置拦住危险自动化？
-- artifact 是否能记录产物、原因和上下文？
+- `Checkpoint` 是否能在正确位置形成显式决策？
+- `Artifact` 是否能记录产物、引用、hash 与审阅状态？
+- `Requirement` 是否能在执行前发现缺失的 skill、MCP tool、runner capability、上下文源与凭据？
+- Preflight evidence 是否足以解释一个 Run 为什么机械就绪，或被依赖问题阻断？行为是否允许仍由 Policy、Trust、Checkpoint 与平台治理决定。
+- Lifecycle Handler 是否能完成 stage 后上报，而不把业务状态改变藏进 handler？
 
 只有这些问题在真实项目中产生重复证据，标准才应该继续演进。
 
 ## 非目标
 
-Huoban 不应该急着做：
+当前不进入公共标准：
 
 - 在对象模型验证前做完整 runtime。
+- 在 Lifecycle Handler 契约稳定前做通用事件 dispatcher。
 - 在 trust 语义清楚前做 hosted registry。
 - 在 adapter 质量可衡量前做 marketplace。
 - 在文本对象稳定前做 visual builder。
 - 在真实 workflow 被理解前做万能 flow generator。
 
-这些都可以以后再做。第一责任是把标准打干净。
+Huoban 的第一责任不是覆盖所有执行场景，而是让已经声明的工作在执行前可验证、执行中有边界、执行后可审计。

@@ -6,7 +6,7 @@ sidebarTitle: "简介"
 
 Huoban 定义 AI 原生工作的**对象语言**，让 AI 工作 **可排版、可润墨、可印刷**。
 
-Huoban 的最小不可替代价值是：把一次 AI 工作拆成**可验证、可组合、可审查**的标准对象，而不是绑定在某个 agent、聊天记录或私有 workflow 里。它用 `Skill`、`Profile`、`Flow`、`Run`、`Checkpoint`、`Policy`、`Adapter`、`Artifact`、`Registry` 和 `Trust` 描述 AI 工作，让不同 agent、tool、MCP server 和项目上下文可以共享同一套编排语义。
+Huoban 的最小不可替代价值是：把一次 AI 工作拆成**可验证、可组合、可审查**的标准对象，而不是绑定在某个 agent、聊天记录或私有 workflow 里。它用十个顶层对象描述能力、上下文、编排、执行、校对、治理、适配、产物、索引与信任，并用 Requirement、Preflight 与 Lifecycle Handler 补齐执行前依赖和生命周期观察，让不同 agent、tool、MCP server 和项目上下文共享同一套编排语义。
 
 今天的 skill、MCP tool、AGENTS.md、CLAUDE.md、Cursor Rules、prompt、workflow 和执行记录分散在不同工具里。Huoban 把这些资产收敛为标准对象，让 AI 工作可以被描述、复用、迁移和治理。
 
@@ -22,7 +22,7 @@ Huoban 活板的设计哲学来自**活字印刷术**。它把 `Skill` 理解为
     `Profile` 把 AGENTS.md、CLAUDE.md、Cursor Rules 和项目知识导入、整理为需要审查的分层上下文。
   </Card>
   <Card title="可印刷" icon="print" type="tip" color="#16A34A">
-    `Run` 锁定一次执行；`Policy` 声明副作用和审批边界；`Checkpoint` 声明显式决策动作。
+    `Run` 锁定一次工作；Preflight 记录机械就绪检查；`Policy` 与 `Checkpoint` 管理副作用和显式决策。
   </Card>
   <Card title="开放标准" icon="code" type="tip" color="#16A34A">
     对象模型优先，不把协议绑定到单一工具、模型、MCP server 或执行环境。
@@ -36,13 +36,29 @@ Huoban 活板的设计哲学来自**活字印刷术**。它把 `Skill` 理解为
 | `Skill` | 活字 | 声明可复用能力、输入输出和副作用。 |
 | `Profile` | 墨方 | 声明分层上下文、项目约束和团队规则。 |
 | `Flow` | 版式 | 声明 capability-first 的编排、阶段、停顿和产物。 |
-| `Run` | 锁版印刷 | 锁定一次执行的对象引用、mode、bindings，并可记录 flow/profile/binding hash。 |
+| `Run` | 锁版印刷 | 锁定一次执行的对象引用、mode、bindings，并可记录 `flowSpecHash`、`profileRefHash`、`policyRefHash` 与 `bindingHash`。 |
 | `Checkpoint` | 校对 | 声明人类或系统必须判断的决策边界。 |
 | `Policy` | 印坊规矩 | 声明权限、副作用、审批和危险动作限制。 |
 | `Adapter` | 转接件 | 描述外部 skill、MCP tool、导入格式或外部能力如何进入 Huoban。 |
 | `Artifact` | 印张 | 记录工作流产出的文档、报告、代码或决策。 |
 | `Registry` | 字架 | 组织对象来源和索引范围。 |
 | `Trust` | 来源信任记录 | 记录对象来源、审查、信任等级和 sandbox 要求。 |
+
+## 共享执行契约
+
+Requirement、Preflight Report 与 Lifecycle Handler 不是新的顶层对象。它们是嵌入十个对象体系的共享结构：
+
+<CardGroup cols={3}>
+  <Card title="Requirement" icon="list-check" href="/requirement-model">
+    声明 Skill、Profile 与 Adapter 依赖的文件、程序、MCP、凭据和上下文来源。
+  </Card>
+  <Card title="Preflight" icon="search-check" href="/preflight-model">
+    在执行前解析 Run、bindings 与 Requirement，形成可审计的就绪证据。
+  </Card>
+  <Card title="Lifecycle Handler" icon="timeline" href="/lifecycle-handler-model">
+    在有限事件上声明上报、观察与清理能力，不引入任意 hook 控制流。
+  </Card>
+</CardGroup>
 
 ## 推荐阅读
 
@@ -55,6 +71,9 @@ Huoban 活板的设计哲学来自**活字印刷术**。它把 `Skill` 理解为
   </Step>
   <Step title="理解上下文与编排">
     阅读 [Profile 模型](/profile-model) 和 [Flow 模型](/flow-model)，理解上下文注入、capability-first 编排和执行快照的边界。
+  </Step>
+  <Step title="理解执行前契约">
+    阅读 [Requirement](/requirement-model)、[Preflight](/preflight-model) 与 [Lifecycle Handler](/lifecycle-handler-model)，区分依赖声明、机械就绪、授权和生命周期观察。
   </Step>
   <Step title="阅读规范参考">
     阅读 [规范参考](/spec-reference)，进入每个对象的字段、约束和示例。
@@ -74,6 +93,7 @@ npm test
 npm run validate
 npm run explain
 npm run print:dry-run
+npm run preflight
 ```
 
-如果你想看完整对象如何协作，从 `examples/flows/idea-to-spec-review.yaml` 开始，再运行 `npm run explain`。
+如果你想看完整对象如何协作，从 [idea-to-spec-review 示例](/example-idea-to-spec-review) 开始，再运行 `npm run explain` 与 `npm run preflight`。

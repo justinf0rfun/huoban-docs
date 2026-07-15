@@ -1,0 +1,152 @@
+---
+title: "Lifecycle Handler 生命周期处理器"
+sidebarTitle: "Lifecycle Handler"
+description: "Lifecycle Handler 让 Flow 在有限生命周期事件上声明上报、观察和清理行为，同时保持执行实现可替换。"
+---
+
+`Lifecycle Handler` 描述 Flow 生命周期中的观察性行为，例如某个 stage 成功后把结构化事件上报给内部 MCP tool。
+
+它不是通用 hook，也不是第 11 个 Huoban 对象。handler 嵌入 `Flow.spec.lifecycle`，只引用 capability 与 role；具体 `Skill` 或 `Adapter` 由同一次 `Run.spec.bindings` 锁定。
+
+<CardGroup cols={2}>
+  <Card title="有限事件" icon="timeline" type="tip" color="#16A34A">
+    v1alpha1 使用封闭事件枚举，不接受任意字符串事件名。
+  </Card>
+  <Card title="能力绑定" icon="plug" type="tip" color="#16A34A">
+    Flow 声明 capability 和 role；Run 选择实现，避免把 MCP 或 runner 私有细节写进版式。
+  </Card>
+  <Card title="可审计投递" icon="receipt" type="tip" color="#16A34A">
+    稳定 event id、有限重试和 invocation 状态让上报可复盘，但不承诺 exactly once。
+  </Card>
+  <Card title="不是控制流" icon="route" type="tip" color="#16A34A">
+    handler 不修改 stage 图、不作业务决策；需要顺序时应建模为 stage。
+  </Card>
+</CardGroup>
+
+## 为什么不用任意 hook
+
+“hook”常把 shell 命令、回调地址、隐式环境变量和控制流混在一起。它难以跨 runner 迁移，也难以回答副作用、超时、重试和审计问题。
+
+Huoban 先按职责分类：
+
+| 需求 | 应使用 |
+| --- | --- |
+| 改变工作步骤或产物 | `Stage` |
+| 要求人或系统判断 | `Checkpoint` |
+| 限制副作用和权限 | `Policy` |
+| 接入外部工具或 MCP | `Adapter` |
+| 在有限事件上上报、观察或清理 | `Lifecycle Handler` |
+
+只有最后一类进入 `Flow.spec.lifecycle`。
+
+## 声明与绑定
+
+Flow 声明事件语义，不嵌入调用实现：
+
+```yaml
+lifecycle:
+  - id: report-stage-success
+    on: stage.succeeded
+    delivery: bestEffort
+    requires:
+      capability: huoban.dev/stageReporting
+      role: stage-reporter
+    timeoutSeconds: 10
+    retry:
+      maxAttempts: 3
+```
+
+Run 使用与 stage 相同的 bindings map 锁定 provider：
+
+```yaml
+bindings:
+  stage-reporter:
+    adapterRef: stage-reporting-mcp
+```
+
+Adapter 再声明 MCP source、mapping、side effects、Trust 与 Requirement。这样同一 Flow 可以把上报能力绑定到不同实现，而不改变 lifecycle 语义。
+
+## 有限事件枚举
+
+v1alpha1 只承认以下事件：
+
+- `run.ready`
+- `run.started`
+- `stage.started`
+- `stage.succeeded`
+- `stage.failed`
+- `checkpoint.requested`
+- `checkpoint.resolved`
+- `run.finalizing`
+- `run.succeeded`
+- `run.failed`
+- `run.cancelled`
+
+`match.stages` 只适用于 stage 事件，用于限制 handler 关注的 stage。当前版本不接受任意 predicate，也不把事件扩展成脚本表达式。
+
+## delivery 与失败
+
+`delivery` 是对实现方的协议要求，不是当前 reference CLI 已经兑现的运行时行为。
+
+| delivery | 对具备 dispatcher 的实现要求 | 当前 CLI 行为 |
+| --- | --- |
+| `bestEffort` | 投递失败应记录 invocation 状态，但不因该 handler 单独阻断控制流。 | binding 与依赖按 optional 证据检查。 |
+| `required` | 对非终态事件，dispatcher 必须在协议规定的推进点确认成功；失败时不得假装后续已推进。 | binding 与依赖参与 required Preflight gate；不执行投递。 |
+
+`bestEffort` 不会把结构错误变合法。不存在的 stage match、错误 capability 或无效 binding 仍应在 validate/preflight 阶段报告。
+
+同一事件的多个 handler 没有顺序保证。若 B 必须在 A 完成后执行，应把它们建模为 stage，而不是依赖 handler 排列顺序。
+
+`run.succeeded`、`run.failed` 和 `run.cancelled` 是已经发生的终态事实，只允许 `bestEffort`。必须完成的收尾工作应绑定 `run.finalizing`，不能让“运行已成功”依赖成功之后才发生的 required handler。
+
+## 事件信封
+
+Lifecycle Event Envelope 只携带最小、可审计上下文：
+
+```json
+{
+  "id": "idea-to-spec-review-001-sharpen-idea-succeeded",
+  "type": "stage.succeeded",
+  "occurredAt": "2026-07-15T00:00:00.000Z",
+  "runRef": { "name": "idea-to-spec-review-001" },
+  "stage": "sharpen-idea",
+  "artifactRefs": [
+    { "kind": "Artifact", "name": "review-notes" }
+  ],
+  "conditionTypes": ["CheckpointRequired"]
+}
+```
+
+`stage.*` 事件必须携带 `stage` 且不能带 `checkpointRef`；`checkpoint.requested` 与 `checkpoint.resolved` 必须携带 `checkpointRef`，并可带 `stage`；`run.*` 事件不能携带二者。
+
+信封不包含 prompt、聊天历史、Profile 正文、secret 或完整输入输出。handler 若需要产物，必须通过 `artifactRefs` 按权限读取。
+
+## 幂等、重试与审计
+
+同一逻辑事件的重试必须复用 event id，接收方应按 event id 幂等处理。协议只声明 `timeoutSeconds` 和 `retry.maxAttempts`，不承诺 exactly once，也不标准化退避算法。
+
+处理状态记录在 `Run.status.lifecycleInvocations`：
+
+```yaml
+lifecycleInvocations:
+  - handlerId: report-stage-success
+    eventId: idea-to-spec-review-001-sharpen-idea-succeeded
+    eventType: stage.succeeded
+    stage: sharpen-idea
+    phase: Pending
+    attempts: 0
+```
+
+handler invocation 本身不再发出 lifecycle event，否则容易形成递归事件风暴。
+
+## Preflight 与治理边界
+
+Preflight 会解析 handler 的 role binding 和 provider Requirement。required handler 不可用会阻断 execute；bestEffort handler 的动态未知可以作为可选证据保留。
+
+Preflight 只记录 provider 的 binding、capability 和声明依赖检查结果。handler 的 `networkAccess`、`sendMessage` 等副作用仍受 `Policy`、`Trust` 与执行器权限控制。
+
+## 当前实现边界
+
+reference implementation 已提供 schema、有限事件结构、Preflight 解析、explain 输出、示例 Event Envelope 和 `lifecycleInvocations` 状态形状。它尚未提供生命周期 dispatcher，也不会实际调用 MCP tool。实现方必须在声明、就绪与授权语义稳定后再接入执行。
+
+继续阅读：[Lifecycle Handler 规范](/spec-lifecycle-handler)、[Flow 模型](/flow-model)、[Adapter 模型](/adapter-model)、[示例：Preflight 与 Lifecycle](/example-preflight-lifecycle)。

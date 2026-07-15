@@ -1,0 +1,112 @@
+---
+title: "Requirement 共享结构"
+sidebarTitle: "Requirement"
+description: "Requirement fragment 的字段、九类外部依赖目标，以及当前 Preflight 的解析与就绪检查边界。"
+---
+
+`Requirement` 描述对象对目标环境的外部依赖。它只能嵌入 `Skill.spec.requirements[]`、`Profile.spec.requirements[]` 或 `Adapter.spec.requirements[]`，不是顶层 kind。
+
+Flow stage 与 Lifecycle Handler 的 `requires` 不是 Requirement：前者声明 `capability` 与 binding `role`，本页的 `requirements[]` 声明文件、可执行程序、MCP、凭证等环境依赖。
+
+## 字段
+
+| 字段 | 要求 | Schema 语义 |
+| --- | --- | --- |
+| `id` | 必填 | 对象内的依赖标识，使用与 `metadata.name` 相同的命名正则。 |
+| `type` | 必填 | 九类 Requirement 之一。 |
+| `target` | 必填 | 由 `type` 决定的目标对象；不允许目标类型之外的字段。 |
+| `optional` | 可选，默认语义为 `false` | 是否为可选依赖。schema 注明 default，但 validator 不会回写字段。 |
+| `origin` | 可选，默认语义为 `declared` | `declared` 或 `inferred`；validator 不会回写默认值。 |
+| `reviewStatus` | `origin: inferred` 时必填 | `accepted` 或 `needsReview`。 |
+| `freshness.maxAgeSeconds` | 依类型必填 | 大于等于 1 的整数，用于动态检查证据有效期。 |
+
+`requirements` 数组本身没有 `minItems` 或 `uniqueItems`。schema 因而允许空数组和重复 id；当前 Preflight 会把可达对象中的重复 id 记录为失败检查。
+
+## Requirement 类型
+
+| `type` | `target` 必填字段 | 额外约束 |
+| --- | --- | --- |
+| `objectRef` | `kind`、`name` | 可选 `generation`，大于等于 1。 |
+| `localPath` | `path`、`access` | `access` 至少一项、不可重复，只能是 `read`、`write`、`execute`。 |
+| `executable` | `name` | 可选 `version` 字符串。 |
+| `mcpServer` | `serverUrl` | URL 必须以 `http://` 或 `https://` 开头；必须有 `freshness`。 |
+| `mcpTool` | `serverUrl`、`name` | 必须有 `freshness`。 |
+| `mcpResource` | `serverUrl`、`uri` | 必须有 `freshness`。 |
+| `credential` | `env` | 环境变量名匹配 `^[A-Z_][A-Z0-9_]*$`；必须有 `freshness`。 |
+| `runnerCapability` | `name` | `name` 必须是合法 capability；必须有 `freshness`。 |
+| `contextSource` | `path` 或 `url`，二选一 | URL 必须是 HTTP(S) 且要求 `freshness`；本地 path 不要求 freshness。 |
+
+## 合法示例
+
+Requirement 必须放在所属对象内。以下是完整合法的 Skill：
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Skill
+metadata:
+  name: spec-outline-writer
+spec:
+  capabilities:
+    - huoban.dev/specification
+  requirements:
+    - id: node-runtime
+      type: executable
+      origin: declared
+      target:
+        name: node
+  sideEffects:
+    declared:
+      - readFile
+      - writeFile
+```
+
+对应 source example：`examples/skills/spec-outline-writer.yaml`。
+
+## 当前 Preflight 行为
+
+Preflight 分开记录 `resolution` 与 `readiness`：前者回答目标是否明确、引用是否解析，后者回答当前环境是否可用。
+
+| 类型 | resolution | readiness |
+| --- | --- | --- |
+| `objectRef` | 按 kind/name/generation 查 workspace。 | 对象存在时为 `True`。 |
+| `localPath` | 记录声明路径。 | 按 `access` 用文件系统权限检查。 |
+| `executable` | 记录程序名或 PATH 解析。 | PATH 中可执行为 `True`；声明 `version` 时不执行版本命令，结果为 `Unknown`。 |
+| `credential` | 记录环境变量名。 | 只检查变量是否设置，不把值写入报告。 |
+| `runnerCapability` | 校验 capability 目标。 | 没有任何 `--runner-capability` 时为 `Unknown`；有声明后按集合检查。 |
+| `contextSource` path | 记录路径。 | 检查本地可读。 |
+| `contextSource` URL | 记录动态目标。 | offline 为 `Unknown`；`--live` 使用只读 `HEAD` 请求。 |
+| MCP 三类 | 记录完整 endpoint/member。 | offline 为 `Unknown`；`--live` 做有界 discovery。 |
+
+MCP live 检查会初始化 MCP session，并对 tool/resource 分别调用 `tools/list` 或 `resources/list`，最多读取 20 页，每次响应体上限为 1 MiB。它不会调用 MCP tool，也不会读取 MCP resource 内容；报告不保留 URL credential、query、fragment 或远端 error text。
+
+Preflight 只收集当前 Run 可达的依赖：有效 Profile、被 stage 或 handler binding 选中的 Skill/Adapter，以及 Skill 关联 Adapter、Adapter 关联 Trust、Profile/Trust 关联 Policy。它不会扫描 workspace 中每个未使用对象的 Requirement。
+
+`origin: inferred` 且 `reviewStatus: needsReview` 的依赖，其 resolution 和 readiness 都是 `Unknown`。`optional: true` 的失败或未知不阻断 gate；required 依赖的处理见 [Preflight](/spec-preflight#执行门槛)。
+
+## 验证边界
+
+- schema 检查字段形状、条件必填、枚举、正则和 freshness。
+- `huoban validate` 不检查本地路径、PATH、环境变量或网络。
+- Preflight 不把依赖可用解释为 Policy 允许或 Trust 授权。
+- 动态检查产生的 `validUntil` 只在 readiness 不是 `Unknown` 且存在 freshness 时生成。
+- 任何带 `source.path` 的 Adapter source 必须有路径完全相同且包含 `read` 的 required `localPath` Requirement。
+- `mcpTool` source 必须有 server URL 与 tool name 完全相同的 required `mcpTool` Requirement。
+
+## 相邻概念边界
+
+| 容易混淆 | 精确边界 |
+| --- | --- |
+| stage/handler `requires` | 声明 capability 与 Run binding role。 |
+| `requirements[]` | 声明具体实现或上下文的外部环境依赖。 |
+| `Adapter.spec.source` | 描述 Adapter 来自哪里；只有显式 Requirement 才进入当前就绪检查。 |
+| `Policy` | 决定副作用和审批边界，不描述依赖是否安装。 |
+| Preflight check | 是某次 Run、某个环境对 Requirement 的证据，不是 Requirement 本身。 |
+
+## 常见错误
+
+- 写成顶层 `kind: Requirement`。
+- 把 `Flow.spec.stages[].requires` 写成 `requirements[]` 的目标结构。
+- 给 `contextSource` 同时写 `path` 和 `url`；该目标使用 `oneOf`，只能选一个。
+- 给 URL、MCP、credential 或 runner capability 动态依赖漏写 `freshness`。
+- 认为 `optional` 会让 schema 忽略字段错误；它只影响 Preflight gate。
+- 认为 `executable.version` 已被实际探测；当前 CLI 明确返回 `Unknown`。

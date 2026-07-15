@@ -1,50 +1,57 @@
 ---
 title: "快速开始"
-description: "安装依赖，运行完整检查，验证 examples、workspace explain、Profile 导入导出和 dry-run Run。"
+description: "从 schema 校验、解释和 dry-run，走到离线 Preflight 与执行前安全边界。"
 sidebarTitle: "快速开始"
 ---
 
-本页给出 Huoban 仓库的最短验证路径。完成后，你应该确认三件事：标准对象能通过 schema 校验，CLI 能解释 workspace，Flow 能生成计划态 dry-run `Run`。
+Huoban 是 AI 系统的开放编排协议：可排版、可润墨、可印刷。
 
-本页验证的是标准对象和 CLI 解释能力，不会触发真实 agent 执行。
+本页复现当前公开实现的完整准备路径：
+
+```text
+validate -> explain / print --dry-run -> preflight -> Policy / Trust / Checkpoint -> execute
+```
+
+当前仓库实现到 Preflight 证据生成。它没有 `execute` 命令、agent runtime 或 Lifecycle dispatcher；最后一步由未来或第三方 runtime 实现。
+
+<Warning>
+  dry-run 不是 Preflight，Preflight 也不是授权。`execute` Run 必须具有 Run scope 的 `PreflightReady=True`，之后仍要独立应用 Policy、Trust、Checkpoint、sandbox 和平台权限。
+</Warning>
 
 ## 前置条件
 
-使用 Node.js 20 或更高版本。
+- Git。
+- Node.js 20 或更高版本。
+- 一个可以写入本地工作区的 shell。
 
-```bash
-node --version
-npm --version
-```
-
-所有命令都在 Huoban 仓库根目录运行。
+文中的 `examples/...` 是 Huoban source repo 内的文件路径，不是本文档站的网页链接。文档站读者不一定能直接浏览该工作区，因此示例页会内嵌关键 YAML。
 
 <Steps>
-  <Step title="安装依赖">
+  <Step title="获取源码并安装依赖">
 
 ```bash
+git clone git@github.com:justinf0rfun/huoban.git
+cd huoban
 npm install
 ```
 
-  </Step>
-
-  <Step title="运行完整检查">
+确认 Node.js 版本：
 
 ```bash
-npm test
+node --version
 ```
-
-`npm test` 会导入 Profile、派生 Policy、导出 AGENTS.md、生成 dry-run Run、验证 YAML 对象、解释 workspace，并检查生成文件是否漂移。
 
   </Step>
 
-  <Step title="验证标准对象">
+  <Step title="验证 10 个顶层 kind">
 
 ```bash
 npm run validate
 ```
 
-验证单个 Flow：
+当前 example workspace 包含 18 个对象，覆盖 10 个顶层 kind：`Skill`、`Profile`、`Flow`、`Run`、`Checkpoint`、`Policy`、`Adapter`、`Artifact`、`Registry`、`Trust`。
+
+验证单个对象：
 
 ```bash
 npm exec -- huoban validate examples/flows/idea-to-spec-review.yaml
@@ -55,6 +62,8 @@ npm exec -- huoban validate examples/flows/idea-to-spec-review.yaml
 ```text
 ✓ examples/flows/idea-to-spec-review.yaml: Flow/idea-to-spec-review
 ```
+
+`Requirement`、Preflight 和 Lifecycle Handler 是嵌入式执行契约，不是额外的 kind。
 
   </Step>
 
@@ -68,38 +77,35 @@ npm run explain
 
 ```text
 Huoban Workspace
-  objects: 15
-  kinds: Adapter=1, Artifact=1, Checkpoint=1, Flow=1, Policy=2, Profile=3, Registry=1, Run=2, Skill=2, Trust=1
+  objects: 18
+  kinds: Adapter=2, Artifact=2, Checkpoint=1, Flow=1, Policy=2, Profile=3, Registry=1, Run=2, Skill=2, Trust=2
   print process:
 ```
 
-如果只想解释核心 Flow：
+只解释参考 Flow：
 
 ```bash
 npm run explain:flow
 ```
 
-  </Step>
-
-  <Step title="验证 Profile 导入导出">
-
-这一步验证 Huoban 可以把已有上下文文件转成结构化 `Profile`，并导出回 agent 可读取的文件。
-
-```bash
-npm run import:profile
-npm run export:agents
-npm run derive:policy
-```
+`explain` 读取对象并显示结构、引用和条件，不创建 Run，也不检查目标环境是否可用。
 
   </Step>
 
-  <Step title="生成 dry-run Run">
+  <Step title="打印 dry-run Run">
 
 ```bash
 npm run print:dry-run
 ```
 
-该命令基于 `examples/flows/idea-to-spec-review.yaml` 生成计划态 `Run`，不会执行 agent 工作。
+该命令把 `Flow/idea-to-spec-review` 打印为 `Run/idea-to-spec-review-dry-run`，不会执行 stage 或 handler。生成的 `Run.spec.snapshot` 使用四个固定字段：
+
+| 字段 | 当前 CLI 哈希的内容 |
+| --- | --- |
+| `flowSpecHash` | `Flow.spec`。 |
+| `profileRefHash` | 本次 `profileRefs` 数组，不是 Profile 内容。 |
+| `policyRefHash` | 本次 `policyRefs` 数组。 |
+| `bindingHash` | 本次 `bindings` 对象，包括写在 binding 内的 fallback。 |
 
 预期输出：
 
@@ -107,37 +113,81 @@ npm run print:dry-run
 ✓ examples/flows/idea-to-spec-review.yaml -> examples/generated/idea-to-spec-review-dry-run.yaml: Run/idea-to-spec-review-dry-run
 ```
 
+`mode: dryRun` 只表示没有执行 agent 工作，不表示依赖已经 ready。
+
+  </Step>
+
+  <Step title="执行默认离线 Preflight">
+
+```bash
+npm run preflight
+```
+
+该脚本更新 dry-run Run，并生成 `Artifact/idea-to-spec-review-dry-run-preflight-report`。Preflight report 的 `snapshotHash` 哈希整个 `Run.spec`，与上面的四个分项 hash 不同。
+
+默认行为是 offline。离线模式会检查对象引用、generation、capability、binding、本地路径和 executable；远程 context 与 MCP readiness 保持 `Unknown`。只有明确需要动态 discovery 时才使用 `--live`。
+
+查看 CLI 参数：
+
+```bash
+npm exec -- huoban --help
+```
+
+`--live` 只执行有界、只读 discovery。它不会调用 MCP tool。
+
+  </Step>
+
+  <Step title="检查执行前安全边界">
+
+查看这些 source tree 文件：
+
+```text
+examples/policies/safe-defaults.yaml
+examples/trust/local-reviewed-grill-me.yaml
+examples/trust/local-stage-reporting.yaml
+examples/checkpoints/idea-to-spec-review-direction.yaml
+examples/generated/idea-to-spec-review-dry-run.yaml
+examples/generated/idea-to-spec-review-preflight-report.yaml
+```
+
+Run scope 的 `PreflightReady=True` 只说明该 Run snapshot 的 required dependencies 在记录时刻 ready。它不会批准副作用，不会提升 Trust，不会解决 Checkpoint，也不会启动执行。
+
   </Step>
 </Steps>
 
-## 本页验证了什么
+## 一次运行完整检查
 
-| 文件 | 对象 | 被验证的职责 |
+完成上面的逐步检查后，可以运行仓库定义的完整测试：
+
+```bash
+npm test
+```
+
+它会运行 unit tests、Profile import、Policy derive、AGENTS.md export、dry-run print、Preflight、schema validation、workspace explain 和 generated-file drift check。该命令会重写仓库中的 deterministic generated examples；只想只读检查时使用 `npm run validate` 和 `npm run explain`。
+
+## 如何判断结果
+
+| 结果 | 可以确认什么 | 不能据此确认什么 |
 | --- | --- | --- |
-| `examples/flows/idea-to-spec-review.yaml` | `Flow` | 声明 capability-first 的编排、阶段、checkpoint 和 artifact。 |
-| `examples/profiles/huoban-open-source-project.yaml` | `Profile` | 注入项目上下文、设计哲学和文档写作规则。 |
-| `examples/policies/safe-defaults.yaml` | `Policy` | 为高风险 side effects 设置审批或拒绝规则。 |
-| `examples/adapters/grill-me-skill-md.yaml` | `Adapter` | 把 `SKILL.md` 来源标准化成 Huoban 能力。 |
-| `examples/generated/idea-to-spec-review-dry-run.yaml` | `Run` | 记录 Flow、Profile、Policy 和 binding 的计划态快照。 |
-| `examples/checkpoints/idea-to-spec-review-direction.yaml` | `Checkpoint` | 在方向确认处建立人类决策边界。 |
-| `examples/artifacts/review-notes.yaml` | `Artifact` | 记录 run 产出的 review notes。 |
+| `validate` 通过 | 对象符合当前 JSON Schema。 | 引用存在、依赖 ready 或执行获准。 |
+| `explain` 输出连贯 | CLI 能解释对象关系。 | 已创建执行快照或完成环境探测。 |
+| dry-run Run 已生成 | Flow、refs、bindings 和 hashes 已被打印。 | 依赖 ready、Policy 允许或 stage 已运行。 |
+| Run scope `PreflightReady=True` | required dependencies 对该 `Run.spec` snapshot ready。 | Policy、Trust、Checkpoint、sandbox 或平台授权已通过。 |
+| stage scope `StagePreflightReady=True` | 指定 stage 的 required checks ready。 | 整个 Run 可以执行。 |
 
 ## 下一步
 
 <CardGroup cols={2}>
-  <Card title="对象模型" icon="boxes" href="/object-model">
-    理解 `Skill`、`Profile`、`Flow`、`Run`、`Checkpoint`、`Policy`、`Adapter`、`Artifact`、`Registry` 和 `Trust` 如何组合。
+  <Card title="端到端示例" icon="route" href="/example-idea-to-spec-review">
+    阅读 Flow、Run、Checkpoint 和 Artifact 的完整 public example。
   </Card>
-
-  <Card title="Profile / Flow 模型" icon="route" href="/profile-model">
-    理解上下文注入、capability-first 编排和执行快照的边界；继续阅读 [Flow 模型](/flow-model)。
+  <Card title="Preflight 与 Lifecycle" icon="list-check" href="/example-preflight-lifecycle">
+    查看 Requirement、离线 evidence、handler binding 和当前 runtime 边界。
   </Card>
-
-  <Card title="示例总览" icon="file-code" href="/examples-overview">
-    从可验证 YAML examples 理解对象如何协作。
+  <Card title="安全策略" icon="shield-check" href="/security">
+    区分 readiness、授权、信任、审批和执行隔离。
   </Card>
-
   <Card title="规范参考" icon="book-open" href="/spec-reference">
-    查看 `v1alpha1` 对象规范、字段约定和验证边界。
+    查看 `v1alpha1` 对象字段与验证边界。
   </Card>
 </CardGroup>

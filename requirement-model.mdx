@@ -1,0 +1,109 @@
+---
+title: "Requirement 执行依赖"
+sidebarTitle: "Requirement"
+description: "Requirement 把 Skill、Profile 与 Adapter 的外部依赖声明为可解析、可预检的共享协议结构。"
+---
+
+`Requirement` 描述一个对象在被用于某次 `Run` 之前，环境必须提供什么。它解决的是隐藏前置条件：skill 文件是否存在、可执行程序是否安装、MCP tool 是否可发现、上下文来源是否可读取、凭据名称是否已配置。
+
+`Requirement` **不是第 11 个 Huoban 对象**。它没有独立 `kind`，而是嵌入 `Skill.spec.requirements`、`Profile.spec.requirements` 和 `Adapter.spec.requirements` 的共享协议结构。
+
+<CardGroup cols={2}>
+  <Card title="声明依赖" icon="list-check" type="tip" color="#16A34A">
+    对象作者声明运行所需的文件、程序、MCP 能力、凭据或上下文来源。
+  </Card>
+  <Card title="不执行依赖" icon="shield-check" type="tip" color="#16A34A">
+    Requirement 只提供待检查事实，不安装 skill、不调用 MCP tool，也不授予权限。
+  </Card>
+</CardGroup>
+
+## 为什么不能只靠失败重试
+
+如果依赖只写在自然语言或实现代码里，系统只能在 stage 已经启动后发现阻塞：缺少本地 skill、MCP server 未连接、知识来源不存在、环境变量未配置。此时重试不会改变环境，只会重复失败。
+
+Requirement 把这些条件移到执行前：
+
+```yaml
+spec:
+  requirements:
+    - id: node-runtime
+      type: executable
+      origin: declared
+      target:
+        name: node
+```
+
+这段声明只表示“该 Skill 需要名为 `node` 的可执行程序”。是否能找到、是否能执行，由 [Preflight](/preflight-model) 在具体 workspace 和 Run 上检查。
+
+## 所有权
+
+Requirement 必须放在最了解依赖的对象上。
+
+| 所有者 | 应声明的依赖 | 示例 |
+| --- | --- | --- |
+| `Skill` | 能力实现自身需要的本地程序、文件或环境能力。 | spec writer 需要 `node`。 |
+| `Profile` | 上下文层需要读取的文件或外部内容来源。 | 项目 Profile 需要 `AGENTS.md`。 |
+| `Adapter` | 外部能力、格式或服务的可用条件。 | MCP Adapter 需要指定 server 上的 tool。 |
+| `Flow` | 不声明 `requirements[]`；它通过 stage 与 lifecycle handler 的 `requires` 声明 capability 和 role。 | `huoban.dev/designReview` + `primary-review`。 |
+| `Run` | 通过 refs 与 bindings 锁定本次对象组合，不复制各对象的 Requirement。 | role 绑定到具体 Skill 或 Adapter。 |
+
+<Warning>
+  `Flow.spec.stages[].requires` 与 `requirements[]` 不是同一个概念。前者选择“需要什么能力、由哪个 role 提供”，后者声明“实现该能力的对象依赖什么环境事实”。
+</Warning>
+
+## 支持的依赖类型
+
+v1alpha1 定义九种 Requirement type：
+
+| type | 检查目标 |
+| --- | --- |
+| `objectRef` | workspace 中的 Huoban 对象及可选 generation。 |
+| `localPath` | 相对 preflight workspace 的路径及 read/write/execute 访问要求。 |
+| `executable` | `PATH` 中的可执行程序；可声明版本要求。 |
+| `mcpServer` | MCP endpoint 是否可连接。 |
+| `mcpTool` | MCP server 是否公开指定 tool。 |
+| `mcpResource` | MCP server 是否公开指定 resource URI。 |
+| `credential` | 指定环境变量名称是否存在；报告不得包含值。 |
+| `runnerCapability` | 当前 runner 是否声明所需 capability。 |
+| `contextSource` | 本地路径或 HTTP(S) 上下文来源是否可访问。 |
+
+动态目标和 credential 必须声明 `freshness.maxAgeSeconds`；URL 形式的 `contextSource` 也必须声明 freshness。具体字段见 [Requirement 规范](/spec-requirement)。
+
+## declared 与 inferred
+
+`origin` 区分依赖由谁提出：
+
+- `declared`：对象作者显式声明。
+- `inferred`：importer 或分析器从 Markdown、配置或外部格式推导。
+
+推导不是事实。`origin: inferred` 必须带 `reviewStatus`。`needsReview` 的 Resolution 与 Readiness 保持 `Unknown`；当该 Requirement 为 required 时会阻止 execute gate，可选依赖仍只保留审查证据。
+
+```yaml
+requirements:
+  - id: repository-guidance
+    type: contextSource
+    origin: inferred
+    reviewStatus: needsReview
+    target:
+      path: AGENTS.md
+```
+
+当前 v1alpha1 只标准化记录状态，不定义“自动接受推导”的工作流。工具必须保留来源信息，并让人或可信系统审查后再修改对象。
+
+## optional 不等于忽略
+
+`optional: true` 表示该依赖不应单独阻断就绪，不表示不检查。Preflight 仍要记录它的 Resolution 与 Readiness，供 explain、降级决策和审计使用。
+
+fallback 也不能绕过 Requirement。fallback 必须在 `Run.spec.bindings` 中显式声明、具备所需 capability，并以与主 binding 相同的 requiredness 通过同一次 Preflight；运行时临时换实现会破坏 Run 的可复盘性。
+
+## 与相邻概念的边界
+
+| 概念 | 负责什么 | 不负责什么 |
+| --- | --- | --- |
+| `Requirement` | 声明对象依赖的环境事实。 | 不检查、不安装、不授权。 |
+| `Preflight` | 在具体 Run/workspace 上解析并检查依赖。 | 不执行业务能力，不评估 Policy。 |
+| `Policy` | 声明副作用、权限和审批边界。 | 不证明文件、MCP 或 credential 存在。 |
+| `Trust` | 记录对象来源、审查和 sandbox 要求。 | 不证明对象当前可用。 |
+| `Checkpoint` | 承载一次显式决策。 | 不能审批绕过缺失的必需依赖。 |
+
+继续阅读：[Requirement 规范](/spec-requirement)、[Preflight 模型](/preflight-model)、[示例：Preflight 与 Lifecycle](/example-preflight-lifecycle)。

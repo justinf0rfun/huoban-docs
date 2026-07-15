@@ -1,100 +1,109 @@
 ---
 title: "贡献与治理"
 sidebarTitle: "贡献与治理"
-description: "Huoban 的贡献方式、对象变更流程、标准提升条件和轻量治理原则。"
+description: "Huoban 的 schema、example、Preflight、Lifecycle 与标准提升贡献规则。"
 ---
 
-# 贡献与治理
-
-Huoban 是早期协议项目。贡献应优先改进标准对象、schema、examples 和 explain 能力，而不是急着扩展 runtime surface。
+Huoban 是 alpha 协议项目。贡献应先改进标准对象、schema、public examples、evidence 和 explain，再扩展 runtime surface。
 
 ## 开发环境
 
-使用 Node.js 20 或 later。
+使用 Node.js 20 或更高版本：
 
 ```bash
 npm install
 npm test
 ```
 
-`npm test` 会重新生成确定性的 examples，验证所有 YAML 对象，解释 workspace，并检查生成文件是否漂移。
+`npm test` 会运行 unit tests，重新生成 deterministic Profile、Policy、AGENTS.md、dry-run Run 与 Preflight report，验证 YAML，解释 workspace，并检查 generated-file drift。
 
 ## 适合贡献的内容
 
-优先贡献：
+- 提高清晰度且不扩大语义的 schema 修正。
+- 有真实输入、schema-valid object 和验证命令的 example。
+- 更准确的 `huoban explain` 输出。
+- 保持只读、有界的 Preflight checks 或 evidence。
+- 有 fixture 和 review boundary 的迁移支持。
+- 澄清 Profile、Policy、Adapter、Flow、Run、Checkpoint、Requirement、Preflight 与 Lifecycle 的边界。
 
-- 改进 schema 清晰度。
-- 添加能在本地验证的真实 example。
-- 改进 `huoban explain` 输出。
-- 为现有 AI 指令格式添加 adapter。
-- 澄清公共标准边界。
+早期避免：
 
-早期应避免：
+- 完整 agent runtime。
+- hosted registry 或 marketplace。
+- 没有安全模型的 external execution。
+- 公司特定规则进入公共 schema。
+- 只有 prose、没有 example/test 的公共标准声明。
 
-- 完整 runtime implementations。
-- Hosted registries。
-- Marketplaces。
-- UI builders。
-- 把公司特定规则提升为公共标准。
+## 顶层 kind 边界
 
-## 对象变更流程
+当前 10 个顶层 kind 是：
 
-修改对象 schema 时，必须同步完成：
+```text
+Skill Profile Flow Run Checkpoint Policy Adapter Artifact Registry Trust
+```
+
+以下是 embedded fragments，不是 kind：
+
+```text
+Requirement
+Lifecycle Handler
+Lifecycle Event Envelope
+Preflight Report
+```
+
+不要为已有职责发明新 kind。新 kind 必须证明与 10 个现有 kind 有不可合并的清晰边界。
+
+## 修改 schema 或 object semantics
 
 1. 更新 `schemas/v1alpha1/` 中的 schema。
-2. 更新 `examples/` 中至少一个 example。
-3. 如果语义发生变化，更新文档。
-4. 运行 `npm test`。
+2. 更新至少一个 `examples/` object。
+3. 如果影响 deterministic output，更新 generated dry-run 或 Preflight evidence。
+4. 更新对应文档。
+5. 如果改变 Preflight 或 Lifecycle 行为，增加 behavioral test。
+6. 运行 `npm test`。
 
-不要添加边界不清晰的新 object kind。新对象必须说明它和现有 `Skill`、`Profile`、`Policy`、`Flow`、`Run`、`Checkpoint`、`Adapter`、`Artifact`、`Registry`、`Trust` 的区别。
+每个 changed line 都应能追溯到该语义变更。
 
-## 标准提升条件
+## 修改 Requirement 或 Preflight
 
-一个功能进入核心标准前，应同时满足：
+必须保持：
 
-- 出现在重复的真实 workflow 中。
-- 不绑定某一家公司或某一个 agent。
-- 可以被 schema 验证。
-- 可以通过 example 说明。
-- 能提升互操作性。
+- Requirement 只嵌入 Skill、Profile 或 Adapter。
+- inferred Requirement 需要 `reviewStatus`。
+- 不虚构 review 后的自动状态迁移。
+- resolution 与 readiness 分开。
+- Preflight report `snapshotHash` 哈希 `Run.spec`。
+- 默认 offline。
+- `--live` 只读、有界，不调用 MCP tool。
+- stage scope 不能授权整个 Run。
+- Run scope `PreflightReady=True` 也不替代 Policy、Trust、Checkpoint 或平台授权。
 
-在证明可复用之前，公司特定实践应留在 `Profile`、`Policy`、`Adapter`、`Flow` 和 `Run` 对象中。
+## 修改 Lifecycle
 
-## Capability 命名
+必须保持：
 
-标准能力使用 `huoban.dev/*` 命名空间。
+- event 来自有限枚举。
+- handler 用 Run binding role 解析实现。
+- delivery、timeout 与 retry 显式且 bounded。
+- 观察、上报与清理可以使用 handler。
+- 状态改变属于 stage。
+- 决策属于 Checkpoint。
+- 权限属于 Policy。
+- 外部能力属于 Adapter。
+- 在 dispatcher/runtime 未实现前，不把 authored status 描述成执行结果。
 
-```text
-huoban.dev/designReview
-huoban.dev/specification
-```
+## 验证矩阵
 
-第三方能力应使用自己的命名空间。
-
-```text
-example.com/customCapability
-vendor.example/specializedReview
-```
-
-新增标准 capability 时，应说明它和现有 capability 的区别，哪些 `Skill` 或 `Adapter` 会声明它，以及它是否足够通用。
-
-## 变更验收
-
-提交前至少运行：
-
-```bash
-npm test
-```
-
-如果只修改 schema、example 或 CLI，也应确认：
+修改 schema、example 或 CLI 后运行：
 
 ```bash
 npm run validate
 npm run explain
 npm run print:dry-run
+npm run preflight
 ```
 
-如果修改 Profile、Policy 或 adapter 行为，也应确认：
+修改 Profile、Policy 或 Adapter 迁移行为后运行：
 
 ```bash
 npm run import:profile
@@ -102,14 +111,46 @@ npm run derive:policy
 npm run export:agents
 ```
 
+最终运行：
+
+```bash
+npm test
+```
+
+## Capability 命名
+
+标准 capability 使用 `huoban.dev/*`：
+
+```text
+huoban.dev/designReview
+huoban.dev/specification
+huoban.dev/stageReporting
+```
+
+第三方 capability 使用自己的 DNS-style namespace。新增标准 capability 时必须提供：
+
+- 与现有 capability 的边界。
+- 至少一个 Skill 或 Adapter example。
+- 至少一个 Flow role usage。
+- 重复真实 workflow 证据。
+
+## 标准提升条件
+
+进入公共标准的模式应同时满足：
+
+- 在重复真实 workflow 中出现。
+- 不绑定单一公司、仓库、agent 或 runner。
+- 可以被 schema 验证。
+- 有 public example。
+- 可以被 CLI 解释。
+- 提升互操作性。
+
+在此之前，保留在私有 `Profile`、`Policy`、`Adapter`、`Flow` 和 `Run` 中。
+
 ## 治理原则
 
-早期治理保持轻量：
-
-- 创始团队维护方向一致性。
-- 文档和示例快速迭代。
-- 核心对象变更需要公开说明和版本记录。
-- 兼容性破坏必须进入 migration notes。
-- 当外部贡献者稳定出现后，再建立更正式的 steering 机制。
-
-Huoban 的核心要保持小而稳定，扩展要保持开放。
+- 核心对象保持小而明确。
+- breaking change 进入 changelog 与 migration notes。
+- generated Markdown 必须 review，不能直接成为可信协议对象。
+- public standard 以 schema、example、test 和 explain evidence 为准。
+- 更正式的治理机制应由稳定外部贡献需求触发，而不是提前设计。

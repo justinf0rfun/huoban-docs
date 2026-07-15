@@ -23,6 +23,9 @@ description: "Artifact 是 Huoban 的印张：把 AI 工作产物从聊天输出
   <Card title="进入校对链路" icon="shield-check" type="tip" color="#16A34A">
     `review.status` 给出轻量状态；完整判断仍由 `Checkpoint` 承载。
   </Card>
+  <Card title="保存预检证据" icon="list-check" type="tip" color="#16A34A">
+    `huoban.dev/preflight-report` 使用 object data 保存 Run scope 的结构化就绪检查。
+  </Card>
 </CardGroup>
 
 ## Artifact 不是普通文件
@@ -94,8 +97,8 @@ runRef:
 stage: sharpen-idea
 contentRef:
   type: file
-  path: artifacts/idea-review.md
-hash: sha256:artifact-placeholder
+  path: examples/artifacts/idea-review.md
+hash: sha256:9ad055106d6f4411941a3bbeb26f8487dc9e68476df9d575fc9535121c775dbe
 ```
 
 边界是：
@@ -153,12 +156,12 @@ artifactRefs:
 | `file` | 仓库或工作区中的文件路径。 |
 | `url` | 外部 URL。 |
 | `gitBlob` | Git blob 引用。 |
-| `object` | 对象存储或实现侧对象引用；定位信息仍必须放在当前 schema 支持的 `path` 或 `url` 字段中。 |
+| `object` | 内联结构化对象，内容必须放在 `data`。 |
 
 建议：
 
 - 小摘要放在 `summary`。
-- 大内容放文件、URL、Git blob 或对象存储。
+- 大内容放文件、URL、Git blob 或外部对象存储；`object/data` 只用于适合内联验证的结构化数据。
 - `contentRef` 指向内容位置。
 - `hash` 用于校验内容完整性。
 - 不要把大段 Markdown、diff、日志或二进制内容内联进 Artifact。
@@ -179,6 +182,7 @@ artifactRefs:
 | `policy-report` | Policy 审查结果。 |
 | `migration-result` | 迁移结果。 |
 | `dry-run-plan` | dry-run 产生的执行计划或预演结果。 |
+| `huoban.dev/preflight-report` | Preflight 的标准结构化证据；该 type 具有额外 schema 约束。 |
 
 命名原则：
 
@@ -186,6 +190,33 @@ artifactRefs:
 - 使用 kebab-case。
 - 不把临时文件名当 type。
 - 同类产物尽量复用同一个 type，方便 Registry 和 Checkpoint 处理。
+
+## Preflight Report Artifact
+
+Preflight Report 没有独立 kind。它是一个受约束的 `Artifact`：
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Artifact
+metadata:
+  name: idea-to-spec-review-dry-run-preflight-report
+spec:
+  type: huoban.dev/preflight-report
+  runRef:
+    name: idea-to-spec-review-dry-run
+  contentRef:
+    type: object
+    data:
+      scope:
+        type: run
+      snapshotHash: sha256:727425f3...
+      checkedAt: 2026-07-15T00:00:00.000Z
+      checks: []
+```
+
+这个 type 强制要求 `runRef`、`contentRef.type: object` 和符合 Preflight Report fragment 的 `data`。报告保存逐项 Resolution/Readiness 证据；`Run.status.preflight.reportRef` 指向它。
+
+报告不是授权凭证，也不应包含 secret、带凭据 URL、完整 prompt 或 MCP 响应。详见 [Preflight](/preflight-model) 与 [Preflight 规范](/spec-preflight)。
 
 ## 与 Policy 的关系
 
@@ -240,8 +271,8 @@ spec:
   stage: sharpen-idea
   contentRef:
     type: file
-    path: artifacts/idea-review.md
-  hash: sha256:artifact-placeholder
+    path: examples/artifacts/idea-review.md
+  hash: sha256:9ad055106d6f4411941a3bbeb26f8487dc9e68476df9d575fc9535121c775dbe
   review:
     status: pending
 ```

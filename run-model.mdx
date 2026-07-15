@@ -1,182 +1,169 @@
 ---
 title: "Run 模型"
 sidebarTitle: "Run 模型"
-description: "Run 是 Huoban 的锁版印刷：记录一次 AI 工作的执行视图、binding、mode、snapshot、状态和产物引用。"
+description: "Run 是 Huoban 的锁版印刷：锁定一次工作使用的 Flow、上下文引用、治理引用与实现 binding，并承载 Preflight 和生命周期状态。"
 ---
 
-`Run` 是 Huoban 的锁版印刷：一次 AI 工作的锁定执行视图与审查记录。
+`Run` 是 Huoban 的锁版印刷。`Flow` 描述可复用版式；`Run` 把一次工作实际采用的 Flow、Profile、Policy、mode 与 bindings 固定下来，并为 Preflight、stage 状态、生命周期投递和 Artifact 提供统一索引。
 
-它不是 runner，也不是执行器本身。`Run` 记录这一次工作基于哪个 `Flow`，使用哪些 `Profile` / `Policy`，把哪些 role 绑定到具体 `Skill` 或 `Adapter`，处于什么 mode，并在 `status` 中留下当前状态、副作用和产物引用。
+Run 不是聊天记录，也不是完整执行日志。它保存足以解释“这一次准备如何工作、使用了什么、当前观察到什么”的声明和状态。
 
-本页属于核心概念，解释 `Run` 的设计边界和使用模型；字段级定义、必填项和 schema 约束见 [Run 规范](/spec-run)。
+本页解释设计边界；字段级定义见 [Run 规范](/spec-run)。
 
 <CardGroup cols={2}>
-  <Card title="锁定执行视图" icon="print" type="tip" color="#16A34A">
-    `Run` 锁定一次工作使用的 Flow、Profile、Policy refs、bindings 和 mode，让复盘不被后续修改污染。
+  <Card title="锁定一次组合" icon="lock" type="tip" color="#16A34A">
+    `spec` 固定 Flow、Profile、Policy、mode、bindings 和当前 snapshot 字段。
   </Card>
-  <Card title="区分 spec / status" icon="shield-check" type="tip" color="#16A34A">
-    `spec` 声明本次计划使用什么，`status` 记录系统实际观察到什么。
+  <Card title="执行前有证据" icon="list-check" type="tip" color="#16A34A">
+    `status.preflight` 把 Run scope 的就绪结论绑定到同一份 `Run.spec`。
   </Card>
-  <Card title="绑定具体实现" icon="plug" type="tip" color="#16A34A">
-    `bindings` 把 Flow 中的 role / capability 解析为本次使用的 Skill 或 Adapter。
+  <Card title="状态与声明分离" icon="split" type="tip" color="#16A34A">
+    作者写 `spec`；工具或 runtime 写 `status`、conditions、Artifact 引用和 lifecycle invocation。
   </Card>
-  <Card title="记录副作用与产物引用" icon="file-code" type="tip" color="#16A34A">
-    `Run` 记录 observed side effects 和 artifact refs，但不保存完整日志或产物正文。
+  <Card title="不冻结整个世界" icon="box-archive" type="tip" color="#16A34A">
+    当前 snapshot 只覆盖 schema 明示的内容；它不是所有被引用对象的完整归档包。
   </Card>
 </CardGroup>
 
-## Run 不是 runner
+## Run 的职责
 
-`Run` 的第一性职责是记录一次执行视图，而不是执行工作。
+Run 必须回答：
 
-| 对象 | 职责 | 不承担 |
-| --- | --- | --- |
-| `Flow` | 定义一类 AI 工作的可复用结构。 | 不保存一次执行的状态和结果。 |
-| `Run` | 锁定一次具体执行使用的对象引用、binding、mode 和 snapshot，并记录当前状态。 | 不重新定义 Flow，不执行工具，不保存完整日志。 |
-| `Checkpoint` | 承载一次具体校对请求和决策边界。 | 不替代 Run 的状态索引。 |
-| `Artifact` | 保存产物类型、`contentRef`、hash、review、runRef 和 stage。 | 不替代 Run 的执行视图。 |
-| `Policy` | 定义副作用、审批和权限边界。 | 不替代 Run 的 observed side effects。 |
+- 采用哪个 `Flow` generation？
+- 本次使用哪些 `Profile` 与 `Policy` 引用？
+- 当前是 explain、dryRun 还是 execute？
+- 每个 stage 和 lifecycle role 绑定到哪个 `Skill` 或 `Adapter`？
+- 这些声明对应哪些 snapshot hash？
+- Run scope 的 Preflight 是否仍有效？
+- 当前 stage、条件、副作用、产物与 lifecycle invocation 是什么？
 
-一句话：`Flow` 定义版式，`Run` 记录这一次如何按该版式印刷。
+Run 不负责定义可复用流程、权限规则、具体校对请求或产物正文。这些分别属于 `Flow`、`Policy`、`Checkpoint` 和 `Artifact`。
 
-## spec 与 status
+## 三种 mode
 
-`Run.spec` 是计划态声明，`Run.status` 是观察态事实。二者不能混用。
+| mode | 目标 | 允许的结果 | 不应发生 |
+| --- | --- | --- | --- |
+| `explain` | 展开对象、引用和 binding 关系。 | 解释、诊断、`Unknown` readiness。 | 执行业务能力或产生副作用。 |
+| `dryRun` | 生成可审查的计划态 Run 与 snapshot。 | 计划、bindings、Preflight 证据。 | 把计划误写成已完成执行。 |
+| `execute` | 交给实现执行锁定的工作。 | stage 状态、Artifact、Checkpoint、lifecycle invocation。 | 在没有 Run scope `PreflightReady=True` 时启动。 |
 
-| 位置 | 表达内容 |
-| --- | --- |
-| `spec.flowRef` | 这次 Run 基于哪个 Flow。 |
-| `spec.profileRefs` | 这次 Run 声明使用哪些上下文。 |
-| `spec.policyRefs` | 这次 Run 声明采用哪些行为边界。 |
-| `spec.bindings` | 这次把 role / capability 解析到哪些 Skill 或 Adapter。 |
-| `spec.mode` | 本次 Run 是 explain、dryRun 还是 execute。 |
-| `spec.snapshot` | 当前 v1alpha1 支持的 flow/profile/binding hash。 |
-| `status.phase` | 当前执行状态摘要。 |
-| `status.currentStage` | 当前 stage id。 |
-| `status.conditions` | 机器可读状态事件。 |
-| `status.observedSideEffects` | 实际观察到的副作用摘要。 |
-| `status.artifacts` | 实际产生的 Artifact 引用。 |
+schema 允许省略 `mode`，但 reference CLI 与 Preflight 按 `execute` 解释省略值。这样缺失字段不会形成 readiness 门禁旁路；需要解释或演练时必须显式写出 `explain` 或 `dryRun`。
 
-不要把实际副作用写进 `spec`，不要把用户期望写进 `status`，不要把 artifact 正文塞进 `Run.status.artifacts`，也不要把 checkpoint 审批意见塞进 `Run.spec`。
+dry-run 不等于 Preflight。dry-run 形成“准备执行什么”的 Run；Preflight 记录“当前环境的机械就绪检查结果”；Policy、Trust 与 Checkpoint 再回答“是否允许执行”。
 
-## Run mode
+## Binding：从 role 到实现
 
-`mode` 表达这次 Run 的执行意图和允许的副作用语义，不是 runner 类型。实际发生的副作用仍以 `status.observedSideEffects` 为准。
-
-| mode | 语义 | 副作用边界 |
-| --- | --- | --- |
-| `explain` | 解释对象、解析引用、说明计划。 | 不触发执行副作用。 |
-| `dryRun` | 生成可审查执行视图和 snapshot，解析 binding。 | 不执行会产生副作用的 agent / tool 动作。 |
-| `execute` | 在 Policy、Trust 和 Checkpoint 约束下执行实际动作。 | 发生副作用、产物或 checkpoint 时，应在对应状态字段中记录。 |
-
-`mode` 不能绕过 `Policy`。如果实际观察到的副作用超出声明，应进入 `status.observedSideEffects` 和 condition，例如 `UndeclaredSideEffectObserved`。
-
-## 最短验证路径
-
-`Run` 不只代表执行后的记录，也可以代表 explain / dry-run 产生的计划态执行视图。
-
-<Steps>
-  <Step title="声明 Flow">
-    `Flow` 声明 capability-first stage、默认 Profile、默认 Policy、checkpoint 和预期产物。
-  </Step>
-  <Step title="解析上下文与边界">
-    工具解析 `Profile`、`Policy`、`Skill`、`Adapter` 和 binding。
-  </Step>
-  <Step title="生成 dry-run Run">
-    `print --dry-run` 生成 `Run`，记录 mode、bindings 和当前 schema 支持的 snapshot hash。
-  </Step>
-  <Step title="审查后再执行">
-    人或系统根据 `Run`、`Checkpoint` 和 `Artifact` 决定是否进入 execute。
-  </Step>
-</Steps>
-
-早期实现不需要先做完整 runner。能稳定生成、解释和验证 `dryRun` Run，就已经能验证 Huoban 的核心对象链路。
-
-## Binding
-
-`spec.bindings` 把 Flow 中的 role / capability 解析为本次使用的具体 `Skill` 或 `Adapter`。
+Flow 只声明 capability 与 role：
 
 ```yaml
-# Run spec fragment
+requires:
+  capability: huoban.dev/designReview
+  role: primary-review
+```
+
+Run 把 role 绑定到一个具体实现：
+
+```yaml
 bindings:
   primary-review:
     adapterRef: grill-me-skill-md
   spec-writer:
     skillRef: spec-outline-writer
+  stage-reporter:
+    adapterRef: stage-reporting-mcp
 ```
 
-边界是：
+每个 binding 必须在 `skillRef` 与 `adapterRef` 中二选一。provider 必须声明 Flow 所需 capability；Preflight 会检查 role、对象引用与 capability 是否匹配。
 
-- `Flow` 声明 capability 和 role。
-- `Run.spec.bindings` 锁定本次具体使用的 Skill / Adapter。
-- `Skill` / `Adapter` 声明能力、输入输出、副作用和信任信息。
-- `Run.spec.snapshot.skillBindingHash` 记录这次 binding 结果的 hash。
+### fallback
 
-当前 schema 只把 binding value 表达为 bare string refs，不强制 `skillRef` 与 `adapterRef` 互斥，也不强制校验 binding key 必须匹配 Flow stage role 或 capability。这些应由 explain / validator 暴露，而不是假装 schema 已经保证。
+fallback 属于本次 Run binding，而不属于 Adapter：
 
-## Snapshot
+```yaml
+bindings:
+  primary-review:
+    adapterRef: preferred-reviewer
+    fallback:
+      skillRef: local-reviewer
+```
 
-`Run.snapshot` 是复盘锚点，不是完整归档包。
+fallback 不是运行时任意热切换。它必须显式锁定、提供同一 capability，并以与主 binding 相同的 requiredness 通过同一 Run 的 Preflight。当前 reference implementation 记录和检查 fallback 声明，但不提供自动切换 runtime。
 
-当前 v1alpha1 只定义：
+## Snapshot 的准确边界
 
-| 字段 | 锁定内容 |
+`snapshot` 整体可选；一旦存在，v1alpha1 要求以下四个 hash 全部出现：
+
+| 字段 | 实际散列内容 |
 | --- | --- |
-| `flowSpecHash` | 本次 Run 使用的 Flow spec。 |
-| `profileSpecHash` | 本次 Run 解析后的 Profile 相关 spec。 |
-| `skillBindingHash` | 本次 Run 的 Skill / Adapter binding。 |
+| `flowSpecHash` | 当前 Flow 的 `spec`。 |
+| `profileRefHash` | `Run.spec.profileRefs` 引用列表。 |
+| `policyRefHash` | `Run.spec.policyRefs` 引用列表。 |
+| `bindingHash` | `Run.spec.bindings`。 |
 
-当前没有 `policySpecHash`，也没有 artifact content hash。Artifact 自己有 `hash`。当前只能通过 `policyRefs` 和可选 `generation` 标识 Policy；完整内容冻结需要未来 snapshot 字段或外部不可变存储保证。
+`profileRefHash` 与 `policyRefHash` 不等于被引用对象完整内容的 hash。若实现需要内容级不可变性，应使用 generation、外部内容寻址存储或未来标准字段；不能把引用列表 hash 描述成完整 Profile / Policy 快照。
 
-## Policy 与 side effects
+Preflight Report 的 `snapshotHash` 又是另一层：它哈希完整 `Run.spec`，用来防止把旧报告套到已修改的 Run 上。它同样不归档 workspace 中所有对象内容。
 
-`Run` 记录本次声明使用哪些 `Policy`，并暴露实际观察到的副作用。
+## Preflight gate
 
-```yaml
-# Run spec fragment
-policyRefs:
-  - name: safe-defaults
-```
+Run scope Preflight 的摘要进入 `status`：
 
 ```yaml
-# Run status fragment
-observedSideEffects:
-  - type: writeFile
-    path: examples/generated/idea-to-spec-review-dry-run.yaml
-conditions:
-  - type: PolicyChecked
-    status: "True"
-    reason: SafeDefaultsApplied
+status:
+  conditions:
+    - type: PreflightResolved
+      status: "True"
+      reason: DependenciesResolved
+    - type: PreflightReady
+      status: "True"
+      reason: DependenciesReady
+  preflight:
+    scope:
+      type: run
+    snapshotHash: sha256:727425f3...
+    checkedAt: 2026-07-15T00:00:00.000Z
+    reportRef:
+      kind: Artifact
+      name: idea-to-spec-review-dry-run-preflight-report
 ```
 
-除 `type` 外，`observedSideEffects` 的 payload 当前是观察细节，schema 不标准化其字段名。
+execute 前必须同时满足：
 
-`Run.spec.policyRefs` 不等于完整 Policy 快照。当前 v1alpha1 不包含 `policySpecHash`，所以不能声称 Run 已经完整冻结 Policy 内容。
+1. scope 是 `run`，不是单个 stage。
+2. report 的 snapshotHash 对应当前 `Run.spec`。
+3. 报告未超过 `validUntil`（如果存在）。
+4. `PreflightReady=True`。
 
-## Checkpoint 与 Artifact
+这只记录机械就绪观察。Policy、Trust、Checkpoint 与实际执行权限仍需独立处理。详见 [Preflight 模型](/preflight-model)。
 
-`Run` 可以记录 checkpoint 状态摘要，但不替代 `Checkpoint` 对象。
+## Lifecycle invocation
+
+Flow 声明 lifecycle handler，Run 用 bindings 锁定 provider；处理过程记录在 `status.lifecycleInvocations`：
 
 ```yaml
-# Run status fragment
-phase: WaitingForCheckpoint
-currentStage: sharpen-idea
-conditions:
-  - type: CheckpointRequired
-    status: "True"
-    reason: ConfirmDirectionBeforeSpec
-artifacts:
-  - name: review-notes
+lifecycleInvocations:
+  - handlerId: report-stage-success
+    eventId: idea-to-spec-review-001-sharpen-idea-succeeded
+    eventType: stage.succeeded
+    stage: sharpen-idea
+    phase: Pending
+    attempts: 0
 ```
 
-边界是：
+`eventId` 标识一个逻辑事件，重试应复用它。`attempts` 与 phase 记录投递观察状态，但当前 schema 和 reference CLI 不提供 dispatcher，也不承诺 exactly once。详见 [Lifecycle Handler](/lifecycle-handler-model)。
 
-- `Run.status.conditions` 记录状态摘要。
-- `Checkpoint` 承载具体校对请求、reason、stage、requiredActions 和 artifactRefs。
-- `Artifact` 保存产物元数据、`contentRef`、hash 和 review；正文或决策记录内容由 `contentRef` 指向。
-- `Run.status.artifacts` 只保存 Artifact 引用，不保存产物内容。
+## Conditions、Checkpoint 与 Artifact
 
-当前 v1alpha1 的 `Run.status.conditions` 没有 `checkpointRef` 字段。实现可以通过 condition reason/message、命名约定或外部索引关联对应 Checkpoint，但不要把这个关联写成 schema 已经强制支持。
+`Run.status.conditions` 是机器可读摘要，不替代专属对象：
+
+| Run status | 专属对象 |
+| --- | --- |
+| `CheckpointRequired` | `Checkpoint` 保存 runRef、stage、reason、requiredActions 与 artifactRefs。 |
+| `artifacts[]` | `Artifact` 保存类型、内容引用、hash、review 与可选 Run/stage 来源。 |
+| `observedSideEffects[]` | `Policy` 定义长期允许、拒绝或审批规则。 |
+| `lifecycleInvocations[]` | Flow 的 Lifecycle Handler 声明事件与 delivery。 |
+
+不要把产物正文、审批评论或完整事件 payload 塞进 Run status。
 
 ## 结构示例
 
@@ -188,7 +175,7 @@ metadata:
 spec:
   flowRef:
     name: idea-to-spec-review
-    generation: 1
+    generation: 2
   profileRefs:
     - name: huoban-open-source-project
       generation: 1
@@ -200,22 +187,35 @@ spec:
       adapterRef: grill-me-skill-md
     spec-writer:
       skillRef: spec-outline-writer
+    stage-reporter:
+      adapterRef: stage-reporting-mcp
   snapshot:
-    flowSpecHash: sha256:flow-placeholder
-    profileSpecHash: sha256:profile-placeholder
-    skillBindingHash: sha256:binding-placeholder
+    flowSpecHash: sha256:b7a80c75e7a8f3f0e043d78623e84a0bd70def9f50134657751bf5e27a5fece2
+    profileRefHash: sha256:d9ec168320ac8ea60d3aa5f049ce8a58bc0c625f1937d560c7e4b0d801f3d5d9
+    policyRefHash: sha256:745db2bbc095810039b9b13ef544ce49bd28e1f7474757cf256e27906fb65006
+    bindingHash: sha256:9d47cbf573e28dad7fd0080bdc96894a27ba85377421e4e34f3455cc58a5f01b
 status:
   phase: WaitingForCheckpoint
   currentStage: sharpen-idea
-  conditions:
-    - type: RunPlanned
-      status: "True"
-      reason: DryRunGenerated
-    - type: CheckpointRequired
-      status: "True"
-      reason: ConfirmDirectionBeforeSpec
+  lifecycleInvocations:
+    - handlerId: report-stage-success
+      eventId: idea-to-spec-review-001-sharpen-idea-succeeded
+      eventType: stage.succeeded
+      stage: sharpen-idea
+      phase: Pending
+      attempts: 0
   artifacts:
     - name: review-notes
 ```
 
-这个示例展示的是 dry-run Run 的结构：它锁定对象引用、binding 和 snapshot，记录等待 checkpoint 的状态，并引用已产生或待审查的 Artifact。示例中的 hash 是占位值；可运行示例见 `examples/generated/idea-to-spec-review-dry-run.yaml`。它不是完整执行日志，也不是产物内容容器。
+完整文件位于 source repository 的 `examples/runs/idea-to-spec-review-run.yaml`；生成路径和 Preflight 报告见 [Preflight 与 Lifecycle 示例](/example-preflight-lifecycle)。
+
+## 常见错误
+
+- 把 `profileRefHash` 写成 effective Profile 内容 hash。
+- 同一个 binding 同时写 `skillRef` 与 `adapterRef`。
+- 在 Run 启动后静默更换 provider 或 fallback。
+- 用 stage scope Preflight 结果授权整次 Run。
+- 把 `PreflightReady=True` 当作 Policy 已通过。
+- 在 dry-run 中伪造已执行的 lifecycle invocation 或 Artifact。
+- 把 Run 当成日志、队列或产物内容仓库。

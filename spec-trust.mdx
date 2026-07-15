@@ -1,56 +1,34 @@
 ---
 title: "Trust 对象"
 sidebarTitle: "Trust"
-description: "Trust 是 Huoban 的来源信任对象，记录 subject、source、level、review、signature、sandbox 和 policy 引用。"
+description: "Trust 的 subject/source/level、review、signature、sandbox 与 Policy 引用，以及当前不执行授权的边界。"
 ---
 
-# Trust 对象
+`Trust` 是 Huoban 的信任印记：它记录对象来源、审查、签名材料和隔离要求。Trust 描述证据与要求，不等于 Policy allow，也不表示 sandbox 已执行。
 
-`Trust` 是 Huoban 的来源信任记录。它描述一个对象来自哪里、被谁审查过、是否有签名、建议什么 sandbox、适用哪些 Policy。
+设计背景见 [信任模型](/trust-model)。
 
-规范页定义 Trust 的字段形状和验证边界。为什么 Trust 不等于权限，请读 [信任模型](/trust-model)。
+## 字段
 
-## 对象职责
-
-Trust 解决的问题是：外部对象不能因为能被加载就被默认信任。Skill、Adapter、Registry 对象或 Artifact 都需要来源、审查和隔离信息。
-
-Trust 负责描述：
-
-- 被描述的对象。
-- 来源类型和位置。
-- 信任等级。
-- 审查信息。
-- 签名或 provenance 信息。
-- sandbox 要求。
-- 适用 Policy。
-
-Trust 不负责：
-
-- 允许或拒绝副作用；这属于 `Policy`。
-- 记录实际执行；这属于 `Run`。
-- 证明内容一定正确；它只记录审查状态和来源信息。
-- 替代 human review；它保存 review 结果。
-
-## v1alpha1 字段
-
-| 字段 | 要求 | 说明 |
+| 字段 | 要求 | Schema 语义 |
 | --- | --- | --- |
-| `spec.subjectRef` | 必填 | 被描述对象，必须包含 `kind` 和 `name`。 |
-| `spec.source` | 必填 | 来源信息。 |
+| `spec.subjectRef` | 必填 | typed object reference：`kind`、`name` 必填，`generation` 可选。 |
+| `spec.source` | 必填 | 来源对象，不允许未声明字段。 |
 | `spec.source.type` | 必填 | `local`、`git`、`http`、`registry`、`unknown`。 |
-| `spec.source.path` | 可选 | 本地路径。 |
-| `spec.source.url` | 可选 | 外部 URL。 |
+| `spec.source.path` | 可选 | 字符串。 |
+| `spec.source.url` | 可选 | 字符串。 |
 | `spec.level` | 必填 | `unknown`、`reviewed`、`trusted`。 |
-| `spec.review` | 可选 | 审查人、时间和结论。 |
-| `spec.signatures` | 可选，开放对象数组 | 签名或 provenance 信息。 |
-| `spec.sandbox.required` | 可选 | 是否要求 sandbox。 |
+| `spec.review` | 可选 | 只允许 `reviewer`、`reviewedAt`、`conclusion`，均为可选字符串。 |
+| `spec.signatures` | 可选 | 开放对象数组。 |
+| `spec.sandbox` | 可选 | 只允许 `required` 与 `network`。 |
+| `spec.sandbox.required` | 可选 | boolean。 |
 | `spec.sandbox.network` | 可选 | `allow`、`deny`、`restricted`。 |
-| `spec.policyRefs` | 可选 | 适用 Policy 引用。 |
-| `status` | 可选 | resolved、signature verified、review required 等状态。 |
+| `spec.policyRefs` | 可选 | local object reference 数组。 |
+| `status` | 可选 | 通用状态。 |
 
-`level` 是来源信任等级，不是执行授权。执行授权必须通过 Policy 解释。
+schema 不根据 source type 要求 path 或 url。`level: trusted` 也不会条件要求 review 或 signatures。
 
-## 最小合法示例
+## 合法示例
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
@@ -63,7 +41,7 @@ spec:
     name: grill-me-skill-md
   source:
     type: local
-    path: skills/grill-me/SKILL.md
+    path: examples/fixtures/grill-me/SKILL.md
   level: reviewed
   review:
     reviewer: core-maintainer
@@ -76,36 +54,39 @@ spec:
     - name: safe-defaults
 ```
 
-参考 example：`examples/trust/local-reviewed-grill-me.yaml`。
+对应 source example：`examples/trust/local-reviewed-grill-me.yaml`。
 
-## 验证规则
+## 当前 CLI 行为
 
-validator 至少应检查：
+- `validate` 检查 typed subject ref、source/level 枚举、review、signature 和 sandbox 形状。
+- `explain` 输出 subject、level、source、sandbox 和 Policy refs。
+- 当可达 Adapter 有 `trustRef` 时，Preflight 检查 Trust 对象是否存在，并要求 `subjectRef` 的 kind、name 与 generation 精确指向该 Adapter，再继续检查该 Trust 的 `policyRefs`。
+- 当前 Preflight 不主动扫描独立 Trust 的 subject。
+- 当前 Preflight 不验证 signatures、不解释 level、不执行 sandbox，也不应用 Policy rule。
 
-- `kind` 必须是 `Trust`。
-- `subjectRef.kind` 和 `subjectRef.name` 必须存在。
-- `source.type` 只能是 `local`、`git`、`http`、`registry`、`unknown`。
-- `level` 只能是 `unknown`、`reviewed`、`trusted`。
-- `sandbox.network` 如果存在，只能是 `allow`、`deny`、`restricted`。
-- `policyRefs` 如果存在，应能解析到 `Policy` 或写入 unresolved condition。
-- `subjectRef` 应能解析到 workspace 对象；不能解析时写入 condition。
+## 验证边界
 
-## 与相邻对象的边界
+- `reviewedAt` 和 source URL 只验证为字符串。
+- signature item 是开放对象，当前 v1alpha1 不定义算法、key id 或验证结果字段。
+- sandbox 是声明要求，不是隔离实现。
+- `policyRefs` 能解析只表示对象存在，不表示规则已评估。
+- `PreflightReady=True` 不表示 Trust level 足够。
 
-| 容易混淆 | 边界 |
+## 相邻概念边界
+
+| 容易混淆 | 精确边界 |
 | --- | --- |
-| `Trust` / `Policy` | Trust 描述来源和审查；Policy 决定运行时允许什么。 |
-| `Trust` / `Adapter` | Adapter 描述外部能力如何映射；Trust 描述该来源是否被审查。 |
-| `Trust` / `Registry` | Registry 指向对象来源；Trust 可以描述 Registry 对象整体或被引入对象的来源信任。v1alpha1 不能直接引用单个 `Registry.sources[]` 条目。 |
-| `Trust` / `Artifact.review` | Trust 可以描述产物来源；Artifact.review 描述产物审查状态。 |
+| Trust / Policy | Trust 记录来源与审查；Policy 声明允许、拒绝或审批。 |
+| Trust / Adapter | Adapter 描述外部能力与 mapping；Trust 记录其来源证据。 |
+| Trust / Registry | Registry 声明来源集合；Trust 描述一个 subject。 |
+| Trust / Artifact review | Trust 可以描述任意 typed subject；Artifact review 只记录产物审查状态。 |
+| sandbox declaration / sandbox runtime | 前者是字段；当前 source 没有后者。 |
 
 ## 常见错误
 
-- 看到 `level: trusted` 就跳过 Policy。即使 trusted，也要按 Policy 执行。
-- 没有 `subjectRef.kind`。Trust 必须明确描述哪个 kind 的哪个对象。
-- 把 sandbox 当作实际隔离实现。Trust 只声明要求，runtime 负责执行。
-- 把 review 结论写成不可机器解析的大段文字。应保留稳定 `conclusion` 字段。
-
-## 活字印刷位置
-
-Trust 对应“来源信任记录”。字从哪里来、谁校过、能不能进入印坊、需要什么隔离，都应该可见；Trust 让 Huoban 的复用不变成盲目信任。
+- 看到 `level: trusted` 就跳过 Policy 或 Checkpoint。
+- 声称 `signatures` 已被当前 CLI 验证。
+- 把 sandbox 字段当作已生效的进程或网络隔离。
+- 认为 Trust 存在就足够；可达 Adapter 的 `trustRef` 与 Trust `subjectRef` 必须精确对应。
+- 根据 source type 发明 schema 未要求的 locator 规则并称其为 validator 行为。
+- 把 Trust 当作第一个执行授权门槛；它只记录信任信息。

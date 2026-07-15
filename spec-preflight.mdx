@@ -1,0 +1,145 @@
+---
+title: "Preflight 共享执行契约"
+sidebarTitle: "Preflight"
+description: "Preflight 的 scope、检查证据、Run 状态写入、offline/live 探测和执行门槛。"
+---
+
+Preflight 对锁定的 Run 做机械就绪检查。它不是顶层 kind，也不是授权系统。
+
+当前 CLI 产生两份输出：更新后的 `Run`，以及 `spec.type: huoban.dev/preflight-report` 的 `Artifact`。完整 checks 保存在 Artifact；`Run.status.preflight` 只保存 scope、时间、snapshot hash 和报告引用。
+
+## 命令
+
+```bash
+npm exec -- huoban preflight <run> \
+  --workspace "examples/**/*.yaml" \
+  --out <updated-run.yaml> \
+  --report <report.yaml>
+```
+
+可选参数是 `--stage <id>`、`--live`、`--offline`、可重复的 `--runner-capability <name>` 和用于确定性输出的 `--at <time>`。默认是 offline；`--live` 与 `--offline` 不能同时出现。
+
+## Report 字段
+
+Preflight Report 是 `Artifact.spec.contentRef.data` 中的共享 fragment。
+
+| 字段 | 要求 | Schema 语义 |
+| --- | --- | --- |
+| `scope.type` | 必填 | `run` 或 `stage`。 |
+| `scope.stage` | scope 为 `stage` 时必填 | stage id 字符串。 |
+| `snapshotHash` | 必填 | 对 `Run.spec` 使用 Huoban canonical JSON v1 得到的 SHA-256。 |
+| `checkedAt` | 必填 | 检查时间字符串。 |
+| `validUntil` | 可选 | required checks 中最早的动态证据过期时间；optional check 不缩短整次 Run 的 gate 证据。 |
+| `checks` | 必填 | Preflight check 数组；schema 允许空数组。 |
+
+每个 check 的字段如下：
+
+| 字段 | 要求 | 说明 |
+| --- | --- | --- |
+| `id` | 必填 | 当前报告内的检查标识。 |
+| `ownerRef` | 必填 | 含 `kind`、`name`，可含 `generation`。 |
+| `requirementType` | 必填 | 与 Requirement 共用九类枚举。 |
+| `optional` | 必填 | 是否不参与 required gate。 |
+| `stage` | 可选 | 所属 stage。 |
+| `handlerId` | 可选 | 所属 Lifecycle Handler。 |
+| `resolution` | 必填 | `status` 与 `reason` 必填，`message` 可选。 |
+| `readiness` | 必填 | 与 resolution 使用相同结构。 |
+| `checkedAt` | 必填 | 此 check 的检查时间。 |
+| `validUntil` | 可选 | 此动态检查的过期时间。 |
+
+`resolution.status` 与 `readiness.status` 都只能是 `"True"`、`"False"` 或 `Unknown`。
+
+## Run 状态摘要
+
+| `Run.status.preflight` 字段 | 要求 | 说明 |
+| --- | --- | --- |
+| `scope` | 必填 | 与报告 scope 相同。 |
+| `snapshotHash` | 必填 | 与报告相同。 |
+| `checkedAt` | 必填 | 与报告相同。 |
+| `validUntil` | 可选 | 与报告聚合值相同。 |
+| `reportRef` | 必填 | Artifact 引用；当前 CLI 生成 `kind: Artifact` 与报告名。 |
+
+Run scope 会写入 `PreflightResolved` 和 `PreflightReady` conditions；stage scope 会写入 `StagePreflightResolved` 和 `StagePreflightReady`。存在 readiness 非 `True` 的可选检查时，还会写入 `OptionalDependencyUnavailable=True`。
+
+## 合法示例
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Artifact
+metadata:
+  name: work-preflight-report
+spec:
+  type: huoban.dev/preflight-report
+  runRef:
+    name: work
+  contentRef:
+    type: object
+    data:
+      scope:
+        type: run
+      snapshotHash: sha256:0000000000000000000000000000000000000000000000000000000000000000
+      checkedAt: "2026-07-15T00:00:00.000Z"
+      checks: []
+  hash: sha256:c2e072a5c9d585029a9ed4b1216be0ed0f7bbd9bd09d5ed036959892e0a0f27f
+```
+
+当 Artifact type 为 `huoban.dev/preflight-report` 时，schema 额外要求 `runRef`、`contentRef.type: object`、符合本页字段的 `contentRef.data` 和 canonical object data hash。
+
+## Offline 与 live
+
+默认 offline 会检查 workspace 引用、generation、capability、Run binding、本地路径、PATH、环境变量以及显式 runner capability。远程 context source 和 MCP readiness 保持 `Unknown`。
+
+`--live` 增加以下只读 discovery：
+
+- context URL 使用 5 秒超时的 `HEAD`。
+- MCP endpoint 执行 initialize 与 initialized notification。
+- MCP tool 使用 `tools/list`，MCP resource 使用 `resources/list`，最多 20 页。
+- 每次 MCP 响应体最多读取 1 MiB。
+- JSON 与 SSE response 必须恰好包含一个与请求匹配的 JSON-RPC id。
+- Preflight 不调用 MCP tool。
+
+报告不会保留 URL user info、query、fragment、常见 credential 形式或远端 MCP error text。`--at` 只用于确定性示例和测试；生产实现应使用可信时钟并拒绝过期证据。
+
+## 执行门槛
+
+required checks 的聚合顺序是：任一 `False` 得到 `False`；否则任一 `Unknown` 得到 `Unknown`；其余为 `True`。
+
+| Run mode | 当前 gate 条件 |
+| --- | --- |
+| `execute` | required resolution 和 readiness 都必须聚合为 `True`。 |
+| `dryRun`、`explain` | required check 不能出现硬 `False`；`Unknown` 可以保留供审查。 |
+| 省略 `mode` | reference CLI 按 `execute` 处理，不能形成旁路。 |
+
+`execute` 必须取得 Run scope 的 `PreflightReady=True`。`StagePreflightReady=True` 只记录所选 stage 的检查结果，不能授权整次 Run。当前 CLI 在 stage 局部检查满足其 mode 规则时可返回退出码 0，同时明确提示它不构成 Run gate。
+
+当前仓库没有 execute runtime；CLI 的 gate 只决定 Preflight 命令是否以失败状态退出。`PreflightReady=True` 也不代表 Policy 允许、Trust 足够或审批已经完成。
+
+## 验证边界
+
+- CLI 会先校验输入 Run；对 workspace 中具有已注册 kind schema 的对象执行 schema validation。
+- workspace 中相同 kind/name 的重复对象会使 Preflight 失败。
+- Preflight 解析有效 Flow、Profile/Policy refs、stage/handler binding、可达 Requirement，以及 Skill/Adapter/Trust 的当前已实现关联。
+- Preflight 按解析后的 Flow spec、有效 Profile refs、有效 Policy refs 和 bindings 重算四个 Run snapshot hash；缺失或不匹配均阻断权威结果。
+- 任何带 path 的 Adapter source 与 MCP tool source 必须存在精确匹配的 required Requirement。
+- 它不解释 Policy rule，不验证 Trust signature，不执行 sandbox，也不解析 Checkpoint 决策。
+- stage scope 仍会检查 Run 的 Flow、有效 Profile/Policy 和 Flow 结构；它只把 stage binding 与 stage lifecycle handler 限定到所选 stage。
+
+## 相邻概念边界
+
+| 容易混淆 | 精确边界 |
+| --- | --- |
+| dry-run | 生成 Run 计划和 snapshot，不检查环境。 |
+| Preflight | 对现有 Run 计划做机械解析与就绪检查。 |
+| Policy | 决定副作用、审批和权限，不由 Preflight 代替。 |
+| Trust | 记录来源与审查；Preflight 当前只检查相关 Trust 对象能否解析。 |
+| Checkpoint | 承载决策；Preflight 不作决策。 |
+
+## 常见错误
+
+- 把 Preflight Report 写成顶层 `kind: PreflightReport`，而不是特殊类型的 Artifact。
+- 用 Flow hash 代替 `snapshotHash`；当前实现哈希完整 `Run.spec`。
+- 只保存 Run status，不保存完整 report Artifact。
+- 在 offline 结果中把远程 MCP readiness 强行写成 `True`。
+- 把 optional 失败当作 required gate 失败，或反过来忽略 required `False`。
+- 用 stage scope 结果满足 execute 的 Run scope 门槛。
+- 把未签名、过期或 `snapshotHash` 不匹配的报告当成可信运行依据。

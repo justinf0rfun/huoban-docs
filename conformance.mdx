@@ -1,141 +1,141 @@
 ---
-title: "兼容等级"
-sidebarTitle: "兼容等级"
-description: "Huoban 的分级兼容模型：完整对象宇宙，低门槛实现。"
+title: "兼容与验证"
+sidebarTitle: "兼容与验证"
+description: "Huoban v1alpha1 当前可验证的 schema、explain、dry-run、Preflight 和转换命令边界。"
 ---
 
-# 兼容等级
+当前 source repo 没有 L0-L5 conformance level，也没有 `huobanConformance` 声明 schema。可验证的实现范围由 10 个顶层 kind 的 JSON Schema、examples 和现有 CLI 命令构成。
 
-Huoban v0.1 应一次性定义完整对象宇宙，但不能要求所有 runtime 一次实现全部能力。
+因此，“兼容”只能具体说明支持了哪条已实现路径，不能用 source 中不存在的等级、字段或 Full Runtime 标签代替证据。
 
-因此 Huoban 需要 conformance levels：让生态可以逐步兼容，也让用户知道某个工具到底支持哪些能力。
+## Conformance 声明字段
 
-## 原则
-
-- 文档定义完整世界观。
-- Object model 定义完整对象宇宙。
-- Conformance 定义最低兼容层。
-- Runtime 可以分级实现。
-- 用户可以根据等级判断工具能力。
-
-## 等级总览
-
-| 等级 | 名称 | 最低要求 |
+| 名称 | v1alpha1 状态 | 结论 |
 | --- | --- | --- |
-| L0 | `Huoban Spec Aware` | 能读取、解析、校验 Huoban 对象。 |
-| L1 | `Huoban Core Compatible` | 支持 `Skill / Profile / Flow / Run / Checkpoint`。 |
-| L2 | `Huoban Adapter Compatible` | 支持外部 skill / 外部能力适配。 |
-| L3 | `Huoban Policy Compatible` | 支持 Policy、side effects、approval。 |
-| L4 | `Huoban MCP Compatible` | 支持通过 MCP 暴露或调用 Huoban 对象。 |
-| L5 | `Huoban Full Runtime` | 支持完整执行、状态、artifact、registry、eval、policy、trust。 |
+| `huobanConformance` | 不存在 | 不能放进任何对象；顶层 schema 都禁止未声明字段。 |
+| `supportedKinds` | 不存在于 conformance schema | 当前没有可验证的实现能力清单字段。 |
+| 顶层 `kind: Conformance` | 不存在 | Huoban 保持 10 个顶层 kind。 |
 
-## L0: Spec Aware
+`Trust.spec.level` 是 Trust 对象自己的来源审查字段，不是 conformance 等级。
 
-工具满足 L0，意味着它可以：
+Requirement、Preflight Report、Lifecycle Handler 和 Lifecycle Event Envelope 是共享 fragment，也不是 conformance level 或新增 kind。
 
-- 读取 Huoban YAML / JSON。
-- 识别 `apiVersion` 与 `kind`。
-- 使用 JSON Schema 校验对象。
-- 输出基本错误位置。
+## 当前命令矩阵
 
-典型工具：schema validator、IDE 插件、静态检查器。
+| 命令 | 输入 | 已实现输出或检查 | 主要边界 |
+| --- | --- | --- | --- |
+| `huoban validate` | 一个或多个 YAML/JSON 文件或 glob | 校验顶层对象与 Lifecycle Event Envelope fragment；file-backed Artifact 与 Preflight Report 额外校验内容 hash。 | 不解析跨对象引用。 |
+| `huoban explain` | 一个或多个 YAML 文件/glob | 对象说明；多对象时增加 workspace 摘要。 | 不先做 schema validation；引用诊断不完整。 |
+| `huoban import` | Markdown + `--as Profile` | 规则推断后的 Profile YAML。 | 只支持 Profile，输出要求 review。 |
+| `huoban export` | Profile + `--to AGENTS.md` | Markdown。 | 只支持 `AGENTS.md` 目标。 |
+| `huoban derive policy` | Profile | 从 risk layer 生成 Policy。 | 只支持非空 `data.requiresApproval`，输出要求 review。 |
+| `huoban print --dry-run` | Flow | `mode: dryRun` 的 Run 计划。 | 不执行、不做 Preflight。 |
+| `huoban preflight` | Run + workspace | 更新后的 Run + Preflight Report Artifact。 | 做机械就绪检查，不做授权或执行。 |
 
-## L1: Core Compatible
+## Validation
 
-工具满足 L1，意味着它支持 Core API Objects：
-
-- `Skill`
-- `Profile`
-- `Flow`
-- `Run`
-- `Checkpoint`
-
-它至少应支持：
-
-- Profile 合并。
-- Flow 静态解释。
-- Run snapshot 生成。
-- Checkpoint 状态表达。
-- `status.conditions` 写入。
-
-## L2: Adapter Compatible
-
-工具满足 L2，意味着它可以把外部能力标准化为 Huoban 对象。
-
-最低要求：
-
-- 支持 `Adapter` 对象。
-- 支持 `SKILL.md` 或外部 MCP tool 的导入描述。
-- 支持 capability mapping。
-- 支持 declared side effects。
-- 支持 `ImportNeedsReview` condition。
-
-## L3: Policy Compatible
-
-工具满足 L3，意味着它可以基于策略控制执行边界。
-
-最低要求：
-
-- 支持 `Policy` 对象。
-- 支持 side-effect-based rules。
-- 支持 `allow`、`deny`、`requireApproval`。
-- 支持 checkpoint 触发。
-- 支持 observed side effects 记录。
-
-## L4: MCP Compatible
-
-工具满足 L4，意味着它可以通过 MCP 与外部 agent 或文档系统互操作。
-
-最低要求：
-
-- 能暴露 Huoban 对象为 MCP resource。
-- 能暴露 validate/explain/import/export 为 MCP tool。
-- 能读取 MCP tool 或 resource 并生成 Adapter。
-- 能保留 trust 与 side-effect 信息。
-
-## L5: Full Runtime
-
-工具满足 L5，意味着它是完整 Huoban runtime。
-
-最低要求：
-
-- 执行 Flow。
-- 解析 capability binding。
-- 注入 effective Profile。
-- 应用 Policy。
-- 记录 Artifact。
-- 执行 Eval。
-- 管理 Checkpoint。
-- 记录 observed side effects。
-- 维护 Registry。
-- 写入完整 status / conditions。
-
-## 为什么要分级
-
-没有分级，Huoban 会面临两个坏结果：
-
-- 标准太小，不能表达完整世界观。
-- 标准太大，没人愿意实现。
-
-分级兼容允许 Huoban 同时拥有完整方向和低门槛入口。
-
-## 声明兼容性
-
-工具可以声明：
-
-```yaml
-huobanConformance:
-  level: L2
-  name: Huoban Adapter Compatible
-  apiVersions:
-    - huoban.dev/v1alpha1
-  supportedKinds:
-    - Skill
-    - Profile
-    - Flow
-    - Run
-    - Checkpoint
-    - Adapter
+```bash
+npm run validate
 ```
 
-声明必须可验证，不应只作为营销标签。
+`validate` 当前执行：
+
+1. 展开 YAML/JSON 文件或 glob；YAML 可以包含单文档或多文档。
+2. 对带 `apiVersion` / `kind` 的顶层对象，按小写 kind 名选择对象 schema。
+3. 对没有资源外壳、但符合 Lifecycle Event Envelope 识别形状的文档，使用对应 fragment schema。
+4. 报告必填、枚举、正则、条件 schema 和 `additionalProperties` 错误。
+5. 对 file-backed Artifact 检查本地文件存在并验证原始 bytes SHA-256；对 Preflight Report 验证 canonical object data SHA-256。
+
+它不检查引用目标、generation 匹配、role binding、Requirement readiness、Policy 或 Trust 语义。除上述 file-backed Artifact 外，它也不读取外部内容。
+
+## Explain 的准确边界
+
+```bash
+npm exec -- huoban explain "examples/**/*.yaml"
+```
+
+多对象 explain 会统计 kinds，并描述 Flow、Run、Adapter、Policy 和 Artifact。当前缺失引用诊断只覆盖：
+
+- Flow 的 Profile/Policy refs。
+- Run 的 Flow、Profile/Policy refs 和主 Skill/Adapter bindings。
+- Adapter 的 `trustRef`。
+
+它不检查 Run fallback、Skill `adapterRef`、Trust subject/Policy refs、Checkpoint/Artifact 关系或 Registry source。`explain` 也不会先调用 schema validator；需要形状保证时应先运行 `validate`。Preflight 会进一步检查当前 Run 可达的 fallback、Skill `adapterRef`、Adapter Trust subject 和 Trust/Profile Policy refs，但不会扫描未使用对象。
+
+## Dry-run 与 Preflight
+
+```bash
+npm run print:dry-run
+npm run preflight
+```
+
+dry-run 生成 Run 计划及四类 snapshot hash：`flowSpecHash`、`profileRefHash`、`policyRefHash`、`bindingHash`。它不执行 stage，不探测依赖。
+
+Preflight 默认 offline，检查锁定 Run 的可达引用、generation、capability binding、Requirement 和当前环境，并输出 Artifact 证据。只有显式 `--live` 才进行远程 context/MCP discovery；不会调用 MCP tool。
+
+`execute` 计划必须有 Run scope 的 `PreflightReady=True` 才能通过当前 gate。stage scope 结果不能授权整次 Run；任何 Preflight readiness 都不能替代 Policy、Trust 或 Checkpoint。
+
+详细字段见 [Run](/spec-run) 与 [Preflight](/spec-preflight)。
+
+## 合法、可验证示例
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Skill
+metadata:
+  name: no-side-effect-skill
+spec:
+  capabilities:
+    - example.dev/inspect
+  sideEffects:
+    declared: []
+```
+
+保存为 YAML 后，以下命令构成当前可复现的对象形状证据：
+
+```bash
+npm exec -- huoban validate path/to/object.yaml
+```
+
+预期成功输出形如：
+
+```text
+✓ path/to/object.yaml: Skill/no-side-effect-skill
+```
+
+这只确认对象通过 Skill schema，不代表它已注册、被 Run 绑定、环境就绪或获准执行。
+
+## 尚未实现
+
+source repo 明确是 standard-first、runtime-later。当前不存在以下可声明为已兼容的行为：
+
+- Flow 或 Skill executor。
+- Lifecycle event dispatcher、timeout 或 retry runtime。
+- Policy rule evaluator 和 enforcement。
+- Trust signature verification 或 sandbox runtime。
+- Checkpoint 决策 runtime。
+- Registry loader、远程分发或 marketplace。
+- MCP tool 调用式执行。
+
+## 草案兼容边界
+
+当前 `v1alpha1` 是 alpha 协议，尚未承诺同版本内的前向兼容。不要声称旧 reader 会忽略新字段：多数对象和嵌套结构使用 `additionalProperties: false`，未知字段会直接校验失败。实现与文档应绑定明确的发布版本或 schema revision。
+
+## 相邻概念边界
+
+| 容易混淆 | 精确边界 |
+| --- | --- |
+| schema validation | 确认单个对象形状符合当前 schema。 |
+| workspace explain | 提供说明和有限引用诊断，不是完整 validator。 |
+| dry-run | 生成 Run 计划，不检查环境。 |
+| Preflight | 检查机械 readiness，不执行也不授权。 |
+| runtime conformance | 当前 source 未定义等级或完整 runtime。 |
+
+## 常见错误
+
+- 宣称支持 L0-L5，尽管 source 中没有这些等级。
+- 在对象中增加 `huobanConformance`、`supportedKinds` 或顶层 `kind: Conformance`。
+- 把 `explain` 的有限 reference check 当成完整 workspace validation。
+- 把 dry-run 当成执行结果，或把 Preflight 当成授权结果。
+- 仅凭能读取 YAML 就声称支持 10 个 kind 的完整语义。
+- 声称旧 v1alpha1 reader 对同版本后续字段前向兼容。

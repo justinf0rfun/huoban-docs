@@ -1,65 +1,41 @@
 ---
 title: "Artifact 对象"
 sidebarTitle: "Artifact"
-description: "Artifact 是 Huoban 的产物对象，记录一次 Run 产生的文档、代码、diff、报告、决策记录或导出结果。"
+description: "Artifact 的类型、Run/stage 关联、四类 contentRef、review 状态与特殊 Preflight Report 约束。"
 ---
 
-# Artifact 对象
+`Artifact` 是 Huoban 的印张：它记录产物或协议证据的类型、来源、内容位置、hash 和审查状态。Artifact 不执行审批，也不保存 Run 的 binding 快照。
 
-`Artifact` 是 Huoban 的印张：一次 AI 工作留下的可审查产物。
+设计背景见 [Artifact 模型](/artifact-model)，Preflight 特殊类型见 [Preflight](/spec-preflight)。
 
-规范页定义 Artifact 的字段形状和验证边界。为什么 Artifact 需要独立对象，请读 [Artifact 模型](/artifact-model)。
+## 字段
 
-## 对象职责
-
-Artifact 解决的问题是：产物不能只存在于聊天结果、终端输出或临时文件里。它必须被命名、引用、hash、审查，并能连接回 Run 和 stage。
-
-Artifact 负责描述：
-
-- 产物类型。
-- 产物来自哪个 Run。
-- 产物来自哪个 stage。
-- 产物内容在哪里。
-- 摘要和 hash。
-- 审查状态。
-
-Artifact 不负责：
-
-- 保存执行快照；这属于 `Run`。
-- 声明预期输出；这属于 `Flow.stages[].outputs`。
-- 审批继续执行；这属于 `Checkpoint`。
-- 存储无限大内容；大内容应通过 `contentRef` 引用。
-
-## v1alpha1 字段
-
-| 字段 | 要求 | 说明 |
+| 字段 | 要求 | Schema 语义 |
 | --- | --- | --- |
-| `spec.type` | 必填 | 产物类型，例如 `markdown`、`diff`、`decision-notes`、`profile`。 |
-| `spec.runRef` | 可选 | 产物来自哪个 Run。 |
-| `spec.stage` | 可选 | 产物来自哪个 stage。 |
-| `spec.contentRef` | 可选 | 产物内容引用。 |
-| `spec.contentRef.type` | `contentRef` 内必填 | `file`、`url`、`gitBlob`、`object`。 |
-| `spec.contentRef.path` | 可选 | 文件路径或对象路径。 |
-| `spec.contentRef.url` | 可选 | 外部 URL。 |
-| `spec.summary` | 可选 | 面向人和 agent 的摘要。 |
-| `spec.hash` | 可选 | 内容 hash。 |
+| `spec.type` | 必填 | 任意字符串；只有 Preflight Report 触发额外约束。 |
+| `spec.runRef` | 可选或条件必填 | local object reference；Preflight Report 时必填。 |
+| `spec.stage` | 可选 | stage id 字符串。 |
+| `spec.contentRef` | 可选或条件必填 | 内容引用；Preflight Report 时必填。 |
+| `spec.summary` | 可选 | 字符串。 |
+| `spec.hash` | 可选或条件必填 | `sha256:<64 位小写十六进制>`；file-backed Artifact 与 Preflight Report 必填。 |
+| `spec.review` | 可选 | 只允许 `status` 字段。 |
 | `spec.review.status` | 可选 | `pending`、`approved`、`rejected`、`changesRequested`。 |
-| `status` | 可选 | indexed、produced、reviewed 等状态。 |
+| `status` | 可选 | 通用状态。 |
 
-v1alpha1 不规定产物类型枚举，因为不同实现会产生不同 artifact type。跨工具互操作应优先使用稳定、可解释的 type 字符串。
+## Content reference
 
-`contentRef` 的 schema 只强制 `type`，但可复盘实现应提供可定位信息：
+`contentRef` 必须有 `type`，且只允许 `type`、`path`、`url`、`data` 四个字段。
 
-| `contentRef.type` | 推荐定位字段 | 当前边界 |
+| `contentRef.type` | 条件必填 | 说明 |
 | --- | --- | --- |
-| `file` | `path` | 指向 workspace 内或约定根目录下的文件。 |
-| `gitBlob` | `path`，并由实现补充 revision 语义 | v1alpha1 不定义完整 git object 引用格式。 |
-| `url` | `url` | 指向外部可访问内容。 |
-| `object` | `path` 或实现自定义对象引用 | 跨实现引用格式尚未承诺。 |
+| `file` | `path` | `path` 是字符串。 |
+| `url` | `url` | `url` 是字符串；schema 不限制协议。 |
+| `gitBlob` | 无 | schema 不额外要求 path、url 或 data。 |
+| `object` | `data` | `data` 是开放对象。 |
 
-缺少可定位信息的 Artifact 可以通过 schema，但不应被视为可复盘产物。
+基础 schema 允许某个 type 同时携带其他已声明字段。例如 `gitBlob` 可以有 `path`，但当前 v1alpha1 没有 revision 字段或 git blob 解析规则。
 
-## 最小合法示例
+## 合法示例
 
 ```yaml
 apiVersion: huoban.dev/v1alpha1
@@ -73,43 +49,57 @@ spec:
   stage: sharpen-idea
   contentRef:
     type: file
-    path: artifacts/idea-review.md
-  hash: sha256:artifact-placeholder
+    path: examples/artifacts/idea-review.md
+  hash: sha256:9ad055106d6f4411941a3bbeb26f8487dc9e68476df9d575fc9535121c775dbe
   review:
     status: pending
 ```
 
-参考 example：`examples/artifacts/review-notes.yaml`。
+对应 source example：`examples/artifacts/review-notes.yaml`。
 
-## 验证规则
+## Preflight Report 特殊类型
 
-validator 至少应检查：
+当 `spec.type` 等于 `huoban.dev/preflight-report` 时：
 
-- `kind` 必须是 `Artifact`。
-- `spec.type` 必须存在。
-- `contentRef.type` 如果存在，只能是 `file`、`url`、`gitBlob`、`object`。
-- `contentRef.type` 为 `file` 或 `gitBlob` 时，workspace validator 应要求 `path`。
-- `contentRef.type` 为 `url` 时，workspace validator 应要求 `url`。
-- `review.status` 如果存在，只能是 `pending`、`approved`、`rejected`、`changesRequested`。
-- 如果 `runRef` 和 `stage` 存在，workspace validator 应确认 stage 能解析到对应 Run 的 Flow。
-- 如果 `hash` 存在，validator 可以检查格式，但 v1alpha1 不强制 hash 算法。
+- `spec.runRef` 必填。
+- `spec.contentRef` 必填。
+- `contentRef.type` 固定为 `object`。
+- `contentRef.data` 必须符合 Preflight Report fragment。
+- `spec.hash` 必填，并等于 canonical object data hash。
 
-## 与相邻对象的边界
+当前 Preflight CLI 生成该 Artifact，`summary` 是 required/optional check 数量，`hash` 是完整 report data 的稳定 SHA-256。字段与合法示例见 [Preflight](/spec-preflight#合法示例)。
 
-| 容易混淆 | 边界 |
+## 当前 CLI 行为
+
+- `spec.hash` 使用 `sha256:<64 位小写十六进制>`。file-backed Artifact 与 Preflight Report 必填；前者哈希原始文件 bytes，后者哈希 Huoban canonical JSON v1 的 object data。
+- `validate` 检查 contentRef 条件和 review enum；特殊 type 触发报告 schema；file-backed Artifact 同时校验本地文件存在和 bytes hash，Preflight Report 同时校验 canonical object data hash。
+- `explain` 输出 type、Run、stage、contentRef 与 review；对 Preflight Report 额外汇总 scope、checks、hash 与时间。
+- `preflight` 创建报告 Artifact，并在 Run status 中写入 `reportRef`。
+- 除 file-backed Artifact 外，当前 CLI 不读取 URL、gitBlob 或普通 object 内容，也不验证这些内容的 hash；它同样不解析 Artifact 与 Run/stage 的关系。
+
+## 验证边界
+
+- `spec.type` 没有通用枚举。
+- `contentRef.url` 只检查字符串；不做网络请求。
+- `gitBlob` 没有条件必填字段，当前 CLI 也没有 git object resolver。
+- `runRef` 与 `stage` 对普通 Artifact 都是可选，且当前 Preflight 不做归属校验。
+- `review.status` 是产物审查状态，不等于 Checkpoint 决策或 Policy 授权。
+
+## 相邻概念边界
+
+| 容易混淆 | 精确边界 |
 | --- | --- |
-| `Artifact` / `Flow.outputs` | Flow 声明预期产物；Artifact 记录实际产物。 |
-| `Artifact` / `Run.status.artifacts` | Run 只引用产物；Artifact 保存产物元数据。 |
-| `Artifact` / `Checkpoint` | Checkpoint 引用待审查产物；Artifact 记录产物本身和 review 状态。 |
-| `Artifact` / `Trust` | Artifact 可以被 Trust 描述来源和审查；Artifact 本身不表达信任等级。 |
+| Flow output | 声明预期产物名与 artifact type。 |
+| Artifact | 记录实际产物或协议证据。 |
+| Run status artifact ref | 只引用 Artifact，不包含正文。 |
+| Artifact review / Checkpoint | 前者记录产物状态；后者记录继续、修改或拒绝的决策边界。 |
+| Artifact hash / Run snapshot | Artifact hash 面向内容或报告；Run snapshot 锁定计划输入。 |
 
 ## 常见错误
 
-- 把大段 Markdown 或 diff 直接塞进 Run。应写成 Artifact 并用 `contentRef` 引用。
-- 只有最终产物才建 Artifact。中间 review notes、dry-run plan、导出的 Profile 都可以是 Artifact。
-- 把 `review.status` 当作 checkpoint 决策。产物审查状态不等于继续执行审批。
-- 缺少 hash 或 contentRef。可复盘产物应至少能定位内容，重要产物应有 hash。
-
-## 活字印刷位置
-
-Artifact 对应“印张”。印张是一次排版、润墨、校对、付印后的结果；Artifact 让 AI 工作留下可迁移、可审查、可复盘的事实。
+- 给 `file` 漏写 `path`，给 `url` 漏写 `url`，或给 `object` 漏写 `data`。
+- 声称 `gitBlob` 已有 schema 强制的 revision/path 格式。
+- 把大段产物正文写入 Run status，而不是 Artifact 或外部 contentRef。
+- 把普通 Artifact 当作 Preflight Report，却没有使用精确 type `huoban.dev/preflight-report`。
+- 把 `review.status: approved` 当成 Checkpoint 已解决。
+- 认为当前 CLI 会验证 URL、gitBlob 或任意 object Artifact hash；当前只验证 file-backed Artifact 和 Preflight Report data hash。

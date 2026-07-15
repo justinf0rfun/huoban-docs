@@ -1,0 +1,155 @@
+---
+title: "Lifecycle Handler 共享结构"
+sidebarTitle: "Lifecycle Handler"
+description: "Flow lifecycle handler、有限事件枚举、事件 envelope、Run invocation 状态和当前无 dispatcher 的实现边界。"
+---
+
+Lifecycle Handler 由 `Flow.spec.lifecycle[]` 声明，用有限事件枚举连接观察、上报和清理能力。它不是顶层 kind，当前仓库也不提供 lifecycle event dispatcher。
+
+Handler 通过 `requires.capability` 描述能力，通过 `requires.role` 在 `Run.spec.bindings` 中选择 Skill 或 Adapter。外部文件、MCP、凭证等环境依赖仍由被绑定对象的 `requirements[]` 声明。
+
+## Handler 字段
+
+| 字段 | 要求 | Schema 语义 |
+| --- | --- | --- |
+| `id` | 必填 | 匹配对象名正则的 handler id。 |
+| `on` | 必填 | 有限 lifecycle event 枚举之一。 |
+| `delivery` | 必填 | `bestEffort` 或 `required`。 |
+| `match` | 可选 | stage selector。 |
+| `match.stages` | `match` 存在时必填 | 至少一个、不重复的非空字符串。 |
+| `requires.capability` | 必填 | 合法 capability。 |
+| `requires.role` | 必填 | 非空字符串，对应 Run binding key。 |
+| `timeoutSeconds` | 必填 | 大于等于 1 的整数。 |
+| `retry.maxAttempts` | 必填 | 大于等于 1 的整数。 |
+
+当 `match` 存在时，`on` 只能是 `stage.started`、`stage.succeeded` 或 `stage.failed`。当 `on` 是 `run.succeeded`、`run.failed` 或 `run.cancelled` 时，`delivery` 必须为 `bestEffort`；required 收尾使用 `run.finalizing`。
+
+事件枚举固定为：
+
+```text
+run.ready
+run.started
+stage.started
+stage.succeeded
+stage.failed
+checkpoint.requested
+checkpoint.resolved
+run.finalizing
+run.succeeded
+run.failed
+run.cancelled
+```
+
+不得增加任意 hook 字符串。状态改变属于 stage，决策属于 Checkpoint，权限属于 Policy，外部能力属于 Adapter。
+
+## 合法示例
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Flow
+metadata:
+  name: review-flow
+spec:
+  stages:
+    - id: review
+      requires:
+        capability: huoban.dev/designReview
+        role: reviewer
+  lifecycle:
+    - id: report-stage-success
+      on: stage.succeeded
+      delivery: bestEffort
+      match:
+        stages:
+          - review
+      requires:
+        capability: huoban.dev/stageReporting
+        role: stage-reporter
+      timeoutSeconds: 10
+      retry:
+        maxAttempts: 3
+```
+
+对应 Run 必须把 `stage-reporter` 绑定到提供 `huoban.dev/stageReporting` 的 Skill 或 Adapter，例如：
+
+```yaml
+spec:
+  bindings:
+    stage-reporter:
+      adapterRef: stage-reporting-mcp
+```
+
+## 当前 Preflight 行为
+
+- 检查 Flow 内重复 handler id。
+- 检查 `match.stages[]` 是否引用 Flow 中存在的 stage。
+- 按 `requires.role` 查找锁定的 Run binding，并检查目标是否提供 `requires.capability`。
+- 继续检查被绑定 Skill/Adapter 的 Requirement 和当前已实现的关联引用。
+- `delivery: bestEffort` 会把 binding 及其依赖标记为 optional；`required` 会参与 required gate。
+- run scope 检查所有 handler；stage scope 只选择 `stage.*` 事件且 selector 包含该 stage 的 handler。
+
+`timeoutSeconds` 和 `retry.maxAttempts` 目前只被 schema 和 explain 读取。没有 dispatcher 执行 timeout、retry 或 handler 调用。
+
+## Lifecycle Event Envelope
+
+Lifecycle Event Envelope 是独立 fragment，不是 Huoban 对象。
+
+| 字段 | 要求 | 说明 |
+| --- | --- | --- |
+| `id` | 必填 | 非空事件 id。 |
+| `type` | 必填 | 上述有限事件枚举。 |
+| `occurredAt` | 必填 | 时间字符串；schema 不校验格式。 |
+| `runRef` | 必填 | local object reference。 |
+| `stage` | stage event 必填；checkpoint event 可选；run event 禁止 | stage id。 |
+| `checkpointRef` | checkpoint event 必填；其他 event 禁止 | 关联的 Checkpoint 引用。 |
+| `artifactRefs` | 可选 | Artifact 引用数组。 |
+| `conditionTypes` | 可选 | 不重复的 condition type 字符串数组。 |
+
+当前 CLI 不生成、投递或消费 Event Envelope；`validate` 可以直接校验 JSON/YAML envelope fragment。该 schema 只定义互操作形状。
+
+## Run invocation 状态
+
+`Run.status.lifecycleInvocations[]` 记录 handler 调用状态：
+
+| 字段 | 要求 | 说明 |
+| --- | --- | --- |
+| `handlerId` | 必填 | 对应 Flow handler。 |
+| `eventId` | 必填 | 对应事件 id。 |
+| `phase` | 必填 | `Pending`、`Running`、`Succeeded`、`Failed`。 |
+| `attempts` | 必填 | `Pending` 时必须为 0；其他 phase 至少为 1。 |
+| `eventType` | 必填 | 有限事件枚举。 |
+| `stage` | stage event 必填；checkpoint event 可选；run event 禁止 | stage id。 |
+| `checkpointRef` | checkpoint event 必填；其他 event 禁止 | local object reference。 |
+| `lastAttemptTime` | 非 Pending phase 必填 | 时间字符串。 |
+
+`Pending` 必须使用 `attempts: 0` 且不能有 `lastAttemptTime`；`Running`、`Succeeded`、`Failed` 必须至少有一次 attempt 并记录 `lastAttemptTime`。
+
+这是状态 schema，不代表当前仓库已经执行 invocation。
+
+## 验证边界
+
+- `huoban validate` 会通过 Flow/Run schema 检查嵌入的 Handler 与 invocation，但不解析 binding；也可以校验没有 `apiVersion`/`kind` 的 Event Envelope fragment。
+- stage event 必须带 `stage` 且不能带 `checkpointRef`；checkpoint event 必须带 `checkpointRef`；run event 不能带二者。
+- Preflight 检查 handler binding、capability、selector 和依赖，不触发事件。
+- schema 限制 `match` 只能搭配三类 stage 事件，并限制三类 terminal Run event 只能使用 `bestEffort`。
+- handler 适用于观察、上报和清理，不应承载状态变更、决策、授权或外部能力定义。
+
+## 相邻概念边界
+
+| 容易混淆 | 精确边界 |
+| --- | --- |
+| Flow stage | 承载工作与状态变化。 |
+| Lifecycle Handler | 对有限事件做观察、上报或清理集成。 |
+| Checkpoint | 承载人类或系统决策。 |
+| Policy | 承载副作用、审批与权限规则。 |
+| Adapter | 描述具体外部能力；Handler 只声明 capability 与 role。 |
+
+## 常见错误
+
+- 写成顶层 `kind: LifecycleHandler`。
+- 使用 `afterStage`、`onSuccess` 等任意 hook 名称代替有限事件。
+- 把 Handler 的 `requires` 写成 Requirement target。
+- 忘记在 Run 中绑定 handler role。
+- 认为 `bestEffort` 会让 schema 错误通过；它只影响当前 Preflight 的 optional gate。
+- 在 `run.succeeded`、`run.failed` 或 `run.cancelled` 上声明 required delivery；必须完成的收尾应使用 `run.finalizing`。
+- 声称当前 CLI 会分发事件、执行 retry 或调用 MCP reporting tool。
