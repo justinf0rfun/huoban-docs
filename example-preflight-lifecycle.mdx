@@ -6,7 +6,7 @@ description: "复现 Requirement、Run scope Preflight、离线 MCP evidence 和
 
 这个 example 把调用输入与三个嵌入式执行契约串成同一条验证路径：
 
-- `Flow.spec.inputs` 声明动态稿件，`Run.spec.inputBindings` 锁定本次文件与 hash。
+- `Flow.spec.inputs` 声明动态稿件的 `content` 语义，`Run.spec.inputBindings` 锁定本次 file carrier 与 hash。
 - `Requirement` 声明 `Skill`、`Profile` 或 `Adapter` 的目标环境依赖。
 - Preflight 分别记录 dependency resolution 与 current-environment readiness。
 - Lifecycle Handler 用有限事件声明观察、上报和清理集成。
@@ -110,7 +110,7 @@ metadata:
 spec:
   inputs:
     - name: idea
-      type: file
+      type: content
       required: true
       description: Markdown source containing the idea to review.
   profileRefs:
@@ -230,18 +230,17 @@ spec:
       adapterRef: stage-reporting-mcp
   inputBindings:
     idea:
-      type: file
-      sourcePath: examples/inputs/product-idea.md
+      type: content
       contentRef:
         type: file
         path: examples/inputs/product-idea.md
       hash: sha256:2fa7baf3030dddd710b3818c589ff8378d0d0b7f44af28e60ab1e254d159ac60
   snapshot:
-    flowSpecHash: sha256:54d40ab4b480360e5c80a1e00713cb30d6daaeeac37b8edd79874ff40178d2ff
+    flowSpecHash: sha256:35f574b2c801f40243ee2f6a1f96e2bba985c0fe93da887f1583a5fd1bd19269
     profileRefHash: sha256:7559a8d488bbdb57906ee5116931bc487bbae1841ab059037d9723c2d848bf77
     policyRefHash: sha256:745db2bbc095810039b9b13ef544ce49bd28e1f7474757cf256e27906fb65006
     bindingHash: sha256:9d47cbf573e28dad7fd0080bdc96894a27ba85377421e4e34f3455cc58a5f01b
-    inputBindingHash: sha256:fe4ec97370aa81ce5d1808282aef9e48f40928897c1e2feac954cacb6ef30e28
+    inputBindingHash: sha256:44da7763a5145f0e4dccda5d8e66614372dce460fb65ef03f2c51d2544d33b8f
 status:
   phase: Planned
   conditions:

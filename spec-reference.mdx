@@ -55,7 +55,7 @@ spec:
 
 ## Digest 形状
 
-所有协议 digest 使用 `sha256:<64 位小写十六进制>`。对象 digest 使用 Huoban canonical JSON v1：对象 key 按 UTF-16 code unit 升序递归排列、数组顺序保持、按 ECMAScript `JSON.stringify` 语义序列化为 UTF-8，再计算 SHA-256。file input 与 file-backed Artifact 直接哈希原始文件 bytes。
+所有协议 digest 使用 `sha256:<64 位小写十六进制>`。对象 digest 使用 Huoban canonical JSON v1：对象 key 按 UTF-16 code unit 升序递归排列、数组顺序保持、按 ECMAScript `JSON.stringify` 语义序列化为 UTF-8，再计算 SHA-256。file carrier 与 file-backed Artifact 直接哈希原始文件 bytes。
 
 ## 10 个顶层 kind
 
@@ -78,6 +78,7 @@ spec:
 
 | 结构 | 所属位置 | 规范 |
 | --- | --- | --- |
+| `ContentRef` | Run `content` input binding 与 `Artifact.spec.contentRef` | [Run](/spec-run#input-binding)、[Artifact](/spec-artifact#content-reference) |
 | Flow entry input | `Flow.spec.inputs[]` | [Flow](/spec-flow#顶层字段) |
 | Run input binding | `Run.spec.inputBindings` | [Run](/spec-run#input-binding) |
 | `Requirement` | `Skill.spec.requirements[]`、`Profile.spec.requirements[]`、`Adapter.spec.requirements[]` | [Requirement](/spec-requirement) |
@@ -93,8 +94,8 @@ spec:
 | --- | --- | --- |
 | `huoban validate` | 解析 YAML/JSON；按 `apiVersion`/`kind` 校验顶层对象，也可校验 Lifecycle Event Envelope fragment；file-backed Artifact 与 Preflight Report 额外验证内容 hash。 | 不解析对象引用，不检查 capability binding，不执行 Policy。 |
 | `huoban explain` | 输出对象或 workspace 摘要，显示入口/绑定元数据，并报告一部分缺失引用；inline input 值不输出。 | 不先做 schema validation，也不是完整关系校验。 |
-| `huoban print --dry-run` | 验证 `--input`，从 Flow 生成 `mode: dryRun` 的 Run 计划、`inputBindings` 与五类 snapshot hash。 | 不执行 stage，不做 Preflight，不调用外部能力。 |
-| `huoban preflight` | 先校验 Run/workspace 对象，再检查可达引用、binding、动态输入内容、Requirement 和当前环境就绪性。 | 不执行 Flow，不调用 MCP tool，不评估 Policy 规则或 Trust 授权。 |
+| `huoban print --dry-run` | 验证 `--input`，把 file/URL carrier 归一化为 `content` binding，从 Flow 生成 `mode: dryRun` 的 Run 计划与五类 snapshot hash。 | 不取回 URL，不执行 stage，不做 Preflight，不调用外部能力。 |
+| `huoban preflight` | 先校验 Run/workspace 对象，再检查可达引用、binding 语义、media type、object kind、动态输入内容、Requirement 和当前环境就绪性。 | 不物化 URL/Git blob，不执行 Flow，不调用 MCP tool，不评估 Policy 规则或 Trust 授权。 |
 | import/export/derive | Markdown 到 Profile、Profile 到 `AGENTS.md`、Profile risk layer 到 Policy。 | 生成结果不能跳过 review；这些命令不是通用转换 runtime。 |
 
 完整命令和可验证范围见 [兼容与验证](/conformance)。

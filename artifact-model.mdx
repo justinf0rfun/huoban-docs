@@ -149,13 +149,15 @@ artifactRefs:
 
 `Artifact` 是产物索引和元数据对象，不是内容仓库。
 
+`contentRef` 是共享 locator：Run 的 `content` input binding 也可以直接使用 file、URL 或 Git blob。共享结构不改变对象边界；普通调用输入不是 Artifact，只有产物或协议证据才进入 Artifact 生命周期。
+
 当前 `contentRef.type` 支持：
 
 | contentRef type | 语义 |
 | --- | --- |
 | `file` | 仓库或工作区中的文件路径。 |
 | `url` | 外部 URL。 |
-| `gitBlob` | Git blob 引用。 |
+| `gitBlob` | 由 `repository` 与不可变 `objectId` 定位的 Git blob；reference CLI 不负责取回。 |
 | `object` | 内联结构化对象，内容必须放在 `data`。 |
 
 建议：

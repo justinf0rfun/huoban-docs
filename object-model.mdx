@@ -67,8 +67,8 @@ Huoban 的对象不是平铺词表，而是一条 AI 工作链路。v1alpha1 的
 | --- | --- | --- |
 | `Skill` | 声明可复用能力。 | `capabilities`、`inputs`、`outputs`、`requirements`、`sideEffects`、`checkpoint`、`adapterRef` |
 | `Profile` | 声明分层上下文。 | `layers`、`merge`、`requirements`、`policyRefs` |
-| `Flow` | 声明 capability-first 编排。 | `profileRefs`、`policyRefs`、`stages`、`checkpoints`、`lifecycle` |
-| `Run` | 锁定一次 AI 工作的执行视图。 | `flowRef`、`profileRefs`、`policyRefs`、`mode`、`bindings`、`snapshot` |
+| `Flow` | 声明 capability-first 编排。 | `inputs`、`profileRefs`、`policyRefs`、`stages`、`checkpoints`、`lifecycle` |
+| `Run` | 锁定一次 AI 工作的执行视图。 | `flowRef`、`profileRefs`、`policyRefs`、`mode`、`inputBindings`、`bindings`、`snapshot` |
 | `Checkpoint` | 声明必须显式处理的决策边界。 | `runRef`、`stage`、`reason`、`requiredActions`、`artifactRefs`、`expiresAt` |
 | `Policy` | 声明权限、副作用、审批和危险动作限制。 | `rules`、`defaults.unknownSideEffect`、`effect`、`when.capabilities`、`when.sideEffects`、`when.trustLevels` |
 | `Adapter` | 标准化外部 skill、MCP tool、导入格式或外部能力。 | `source`、`capabilities`、`requirements`、`mapping`、`sideEffects`、`checkpoint`、`trustRef` |
@@ -76,10 +76,11 @@ Huoban 的对象不是平铺词表，而是一条 AI 工作链路。v1alpha1 的
 | `Registry` | 组织对象来源和索引范围。 | `sources`、`index.includeKinds`、`trustPolicyRef` |
 | `Trust` | 记录对象来源、审查状态、信任等级和 sandbox 要求。 | `subjectRef`、`source`、`level`、`review`、`signatures`、`sandbox`、`policyRefs` |
 
-Huoban v1alpha1 只有以上十个顶层 `kind`。执行前就绪与生命周期语义不通过增加大对象解决，而是使用四类共享结构：
+Huoban v1alpha1 只有以上十个顶层 `kind`。内容寻址、执行前就绪与生命周期语义不通过增加大对象解决，而是使用五类共享结构：
 
 | 共享结构 | 所在位置 | 职责 |
 | --- | --- | --- |
+| `ContentRef` | Run `content` binding、`Artifact.spec.contentRef` | 描述 file、HTTP(S) URL、Git blob 或 inline object 的内容位置；共享 locator 不等于共享对象职责。 |
 | `Requirement` | `Skill`、`Profile`、`Adapter` 的 `spec.requirements[]` | 声明文件、程序、MCP、凭据、runner capability 或上下文来源依赖。 |
 | `Preflight Report` | `Artifact.spec.contentRef.data` | 保存 Run/workspace 上逐项 Resolution 与 Readiness 证据。 |
 | `Lifecycle Handler` | `Flow.spec.lifecycle[]` | 在有限事件上声明上报、观察或清理能力及 delivery。 |
@@ -94,10 +95,10 @@ Huoban v1alpha1 只有以上十个顶层 `kind`。执行前就绪与生命周期
 | 候选概念 | v1alpha1 当前表达 | 可能提升为对象的条件 |
 | --- | --- | --- |
 | `Eval` | 可先作为 `Artifact.review`、`Checkpoint` reason 或实现侧检查存在。 | 出现稳定、可复用的校样 schema 和 examples。 |
-| `Context` | 结构化上下文进入 `Profile.layers`，外部内容引用可进入 `Artifact.contentRef`。 | 需要跨 Profile、Artifact、Adapter 的独立上下文生命周期。 |
+| `Context` | 结构化上下文进入 `Profile.layers`；一次调用的外部内容进入 Run content binding；产物内容进入 `Artifact.contentRef`。 | 需要跨 Profile、Run、Artifact、Adapter 的独立上下文生命周期。 |
 | `Permission` | 权限和审批边界进入 `Policy.rules`。 | 需要比 Policy 更细的授权对象，并有重复 workflow 证据。 |
 | `Tool` | 外部工具能力通过 `Adapter.source` 和 `Adapter.capabilities` 表达。 | 工具描述需要脱离 Adapter 独立复用。 |
-| `Resource` | 可读取资源可通过 `Profile.layers`、`Artifact.contentRef` 或 Adapter 实现语义表达。 | 资源需要独立权限、信任和生命周期管理。 |
+| `Resource` | 可读取资源可通过 `Profile.layers`、Run content binding、`Artifact.contentRef` 或 Adapter 实现语义表达。 | 资源需要独立权限、信任和生命周期管理。 |
 | `Prompt` | 可复用提示可作为 `Skill` 的实现材料或 Adapter 来源。 | prompt 本身需要成为可验证、可版本化、可组合对象。 |
 | `Runtime` | 执行环境属于实现侧或兼容等级说明。 | 执行环境声明需要进入跨实现互操作协议。 |
 | 独立 `Binding` | 当前由 `Run.spec.bindings` 表达 capability 到 `Skill` 或 `Adapter` 的绑定结果。 | binding 需要跨 Run 复用、审查或签名。 |

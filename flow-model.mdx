@@ -71,7 +71,7 @@ metadata:
 spec:
   inputs:
     - name: idea
-      type: file
+      type: content
       required: true
       description: Markdown source containing the idea to review.
   profileRefs:
@@ -109,7 +109,7 @@ bindings:
     adapterRef: grill-me-skill-md
 inputBindings:
   idea:
-    type: file
+    type: content
     contentRef:
       type: file
       path: examples/inputs/product-idea.md
@@ -155,14 +155,33 @@ requires:
 ```yaml
 inputs:
   - name: document
-    type: file
+    type: content
     required: true
   - name: instruction
     type: text
     required: false
 ```
 
-v1alpha1 支持 `file`、`text`、`object` 和 `artifactRef`。具体调用值进入 `Run.spec.inputBindings`。这对结构解决两个不同问题：Flow 回答“这类工作接受什么”，Run 回答“这一次实际给了什么”。
+v1alpha1 支持四类入口语义：`text`、`object`、`content` 和 `objectRef`。具体调用值进入 `Run.spec.inputBindings`。这对结构解决两个不同问题：Flow 回答“这类工作接受什么”，Run 回答“这一次实际给了什么”。
+
+`content` 表示一段可寻址内容，不把传输方式写进 Flow。调用者可以在 Run 中使用 file、HTTP(S) URL 或 Git blob 载体；Flow 只在需要时用 `mediaTypes` 限定内容格式。`objectRef` 表示一个 Huoban 协议对象，Flow 必须用 `objectKinds` 声明允许引用哪些 kind。
+
+```yaml
+inputs:
+  - name: source
+    type: content
+    required: true
+    mediaTypes:
+      - text/markdown
+  - name: prior-review
+    type: objectRef
+    required: false
+    objectKinds:
+      - Artifact
+      - Checkpoint
+```
+
+因此，同一份 Flow 不需要为本地文件与远程文档各定义一个入口，也不需要把任意 URL 包装成 Artifact。file/URL 是 carrier，Artifact 是产物或协议证据；它们解决的问题不同。
 
 stage 只能使用两种结构化来源：
 
@@ -330,6 +349,6 @@ policyRefs:
 
 `idea-to-spec-review` 是 Huoban 的首个参考 Flow。
 
-它验证的不是“Huoban 能跑任意工作流”，而是一个更基础的标准化路径：静态 Flow 可以声明动态文件入口，现有 AI 能力可以被标准化成 `Skill` / `Adapter`，带着 `Profile` 排成 `Flow`，通过 `Checkpoint` 暴露判断边界，并在 `Run` / `Artifact` 中留下可审查记录。
+它验证的不是“Huoban 能跑任意工作流”，而是一个更基础的标准化路径：静态 Flow 可以声明动态 content 入口，调用时再绑定 file 等具体载体；现有 AI 能力可以被标准化成 `Skill` / `Adapter`，带着 `Profile` 排成 `Flow`，通过 `Checkpoint` 暴露判断边界，并在 `Run` / `Artifact` 中留下可审查记录。
 
 从 [示例：idea-to-spec-review](/example-idea-to-spec-review) 开始阅读完整对象链路。

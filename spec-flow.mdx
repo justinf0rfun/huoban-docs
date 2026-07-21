@@ -16,9 +16,11 @@ description: "Flow 的动态入口、capability-first stage、结构化输入来
 | `spec.policyRefs` | 可选 | local object reference 数组。 |
 | `spec.inputs` | 可选 | Flow 入口声明数组；name 应在 Flow 内唯一。 |
 | `spec.inputs[].name` | 每项必填 | 非空字符串，作为 Run binding key。 |
-| `spec.inputs[].type` | 每项必填 | `file`、`text`、`object` 或 `artifactRef`。 |
+| `spec.inputs[].type` | 每项必填 | 语义类型：`text`、`object`、`content` 或 `objectRef`。 |
 | `spec.inputs[].required` | 每项必填 | boolean；是否要求每次 Run 都提供 binding。 |
 | `spec.inputs[].description` | 可选 | 面向作者和实现者的说明。 |
+| `spec.inputs[].mediaTypes` | `content` 时可选 | 非空且不重复的媒体类型数组；其他 input type 禁止出现。 |
+| `spec.inputs[].objectKinds` | `objectRef` 时必填 | 非空且不重复的 Huoban kind 数组；其他 input type 禁止出现。 |
 | `spec.stages` | 必填，至少 1 项 | stage 数组。 |
 | `spec.checkpoints` | 可选 | Flow 内的 checkpoint 声明数组。 |
 | `spec.lifecycle` | 可选 | Lifecycle Handler 数组。 |
@@ -67,7 +69,7 @@ metadata:
 spec:
   inputs:
     - name: idea
-      type: file
+      type: content
       required: true
       description: Markdown source containing the idea to review.
   profileRefs:
@@ -99,7 +101,7 @@ spec:
 
 ### Dry-run print
 
-`huoban print --dry-run` 读取一个 Flow，拒绝重复 input name，并验证 required/unknown/type-mismatched `--input`，生成 `mode: dryRun` 的 Run。它复制 Flow profile/policy refs，加入命令行 refs、implementation bindings 与 input bindings，并生成 `flowSpecHash`、`profileRefHash`、`policyRefHash`、`bindingHash`、`inputBindingHash`。
+`huoban print --dry-run` 读取一个 Flow，拒绝重复 input name，并验证 required/unknown/type-mismatched `--input`、media type 与 object kind 约束，生成 `mode: dryRun` 的 Run。它复制 Flow profile/policy refs，加入命令行 refs、implementation bindings 与 input bindings，并生成 `flowSpecHash`、`profileRefHash`、`policyRefHash`、`bindingHash`、`inputBindingHash`。
 
 dry-run 只生成计划；它不执行 stage，也不自动运行 Preflight。
 
@@ -111,7 +113,7 @@ dry-run 只生成计划；它不执行 stage，也不自动运行 Preflight。
 - 解析 Flow 与 Run 合并后的 Profile/Policy refs。
 - 报告重复 stage id 和重复 lifecycle handler id。
 - 报告重复 Flow input name、未声明 `flowInput`、不存在的 `stageOutput` 和不是前序 stage 的输出引用。
-- 检查 required Run input binding、未知 binding 与 binding type。
+- 检查 required Run input binding、未知 binding、语义类型、允许的媒体类型与允许的对象 kind。
 - 对 `requires` 按 role 查 Run binding，并检查 Skill/Adapter 是否提供 capability。
 - 对 `uses` 要求 workspace 中恰好有一个同名 Skill 或 Adapter；它只支持 dry-run 与诊断，execute mode 会产生 `LegacyUseNotLocked`。
 - 检查 Lifecycle Handler 的 stage selector、binding 和依赖。
@@ -132,6 +134,8 @@ dry-run 只生成计划；它不执行 stage，也不自动运行 Preflight。
 | --- | --- |
 | Flow / Run | Flow 是可复用版式；Run 锁定一次具体引用、binding 和 snapshot。 |
 | Flow input / Run input binding | Flow input 是入口契约；Run input binding 是一次调用的值或内容引用。 |
+| semantic input / carrier | Flow 声明 `content`；Run 再用 `contentRef.type: file/url/gitBlob` 说明这次内容从哪里来。 |
+| objectRef input / Artifact | `objectRef` 可以引用 Flow 允许的任意 Huoban kind；只有实际产物或协议证据才建模为 Artifact。 |
 | stage `requires` / Requirement | stage `requires` 是 capability+role；`requirements[]` 是实现对象的环境依赖。 |
 | Flow checkpoint / Checkpoint | Flow 声明位置；Checkpoint 顶层对象记录一次 Run 的具体决策边界。 |
 | Flow output / Artifact | output 声明预期类型；Artifact 记录实际产物或证据。 |
@@ -143,6 +147,8 @@ dry-run 只生成计划；它不执行 stage，也不自动运行 Preflight。
 - 省略 `requires.role` 却期望 Run 自动按 stage id 绑定。
 - 把外部文件或可执行程序写进 stage `requires`；这些属于 Skill/Profile/Adapter 的 Requirement。
 - 把调用文件写成 Requirement，或使用 `user.prompt`、`stages.a.outputs.b` 等自由字符串来源。
+- 把 `file` 或 `url` 当作 Flow 的业务语义类型；它们是 `content` 的载体。
+- 为了传入一个 URL 而伪造 Artifact；只有该 URL 已代表协议中的产物或证据时才应引用 Artifact。
 - 让 stage 引用当前或未来 stage 的输出。
 - 把 shell command、模型参数或 runner 配置写入 Flow。
 - 声称 checkpoint 引用和 input/output 数据流已被当前 Preflight 验证。

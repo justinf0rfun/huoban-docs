@@ -1,7 +1,7 @@
 ---
 title: "Artifact 对象"
 sidebarTitle: "Artifact"
-description: "Artifact 的类型、Run/stage 关联、四类 contentRef、review 状态与特殊 Preflight Report 约束。"
+description: "Artifact 的类型、Run/stage 关联、共享 ContentRef、review 状态与特殊 Preflight Report 约束。"
 ---
 
 `Artifact` 是 Huoban 的印张：它记录产物或协议证据的类型、来源、内容位置、hash 和审查状态。Artifact 不执行审批，也不保存 Run 的 binding 快照。
@@ -24,16 +24,18 @@ description: "Artifact 的类型、Run/stage 关联、四类 contentRef、review
 
 ## Content reference
 
-`contentRef` 必须有 `type`，且只允许 `type`、`path`、`url`、`data` 四个字段。
+`contentRef` 是协议共享结构：Artifact 用它定位产物内容，Run 的 `content` input binding 也复用同一结构。复用 locator 不代表所有输入内容都是 Artifact。
+
+`contentRef` 是严格互斥的 tagged union。每种 `type` 只能携带该载体声明的字段，不能在 file reference 中混入 URL，也不能用空的 `gitBlob` 占位。
 
 | `contentRef.type` | 条件必填 | 说明 |
 | --- | --- | --- |
 | `file` | `path` | `path` 是字符串。 |
-| `url` | `url` | `url` 是字符串；schema 不限制协议。 |
-| `gitBlob` | 无 | schema 不额外要求 path、url 或 data。 |
+| `url` | `url` | 必须以 `http://` 或 `https://` 开头。 |
+| `gitBlob` | `repository`、`objectId` | `repository` 是非空仓库 locator；`objectId` 是 40 或 64 位小写十六进制 Git object ID。 |
 | `object` | `data` | `data` 是开放对象。 |
 
-基础 schema 允许某个 type 同时携带其他已声明字段。例如 `gitBlob` 可以有 `path`，但当前 v1alpha1 没有 revision 字段或 git blob 解析规则。
+`repository + objectId` 只建立不可歧义的 Git blob locator。`objectId` 是 Git 对象身份，不等于 Run binding 或 Artifact 使用的 `sha256:...` 内容 hash。当前 reference CLI 没有 Git resolver，不会因此把远程内容判定为 ready。
 
 ## 合法示例
 
@@ -80,8 +82,8 @@ spec:
 ## 验证边界
 
 - `spec.type` 没有通用枚举。
-- `contentRef.url` 只检查字符串；不做网络请求。
-- `gitBlob` 没有条件必填字段，当前 CLI 也没有 git object resolver。
+- `contentRef.url` 检查 HTTP(S) 形状；不做网络请求。
+- `gitBlob` 必须同时声明 `repository` 与 `objectId`；当前 CLI 仍没有 git object resolver。
 - `runRef` 与 `stage` 对普通 Artifact 都是可选，且当前 Preflight 不做归属校验。
 - `review.status` 是产物审查状态，不等于 Checkpoint 决策或 Policy 授权。
 
@@ -97,9 +99,10 @@ spec:
 
 ## 常见错误
 
-- 给 `file` 漏写 `path`，给 `url` 漏写 `url`，或给 `object` 漏写 `data`。
-- 声称 `gitBlob` 已有 schema 强制的 revision/path 格式。
+- 给 `file` 漏写 `path`，给 `url` 漏写 `url`，给 `gitBlob` 漏写 `repository` / `objectId`，或给 `object` 漏写 `data`。
+- 在同一个 content reference 中混用不同载体的字段。
 - 把大段产物正文写入 Run status，而不是 Artifact 或外部 contentRef。
+- 为了给 Run 传入普通文件或 URL 而伪造 Artifact；Run `content` binding 可以直接使用共享 ContentRef。
 - 把普通 Artifact 当作 Preflight Report，却没有使用精确 type `huoban.dev/preflight-report`。
 - 把 `review.status: approved` 当成 Checkpoint 已解决。
 - 认为当前 CLI 会验证 URL、gitBlob 或任意 object Artifact hash；当前只验证 file-backed Artifact 和 Preflight Report data hash。

@@ -98,7 +98,7 @@ npm run explain:flow
 npm run print:dry-run
 ```
 
-该命令把 `Flow/idea-to-spec-review` 打印为 `Run/idea-to-spec-review-dry-run`，不会执行 stage 或 handler。脚本把 `examples/inputs/product-idea.md` 绑定到 Flow 声明的 required `idea: file` 入口：
+该命令把 `Flow/idea-to-spec-review` 打印为 `Run/idea-to-spec-review-dry-run`，不会执行 stage 或 handler。脚本用 `file:` carrier 把 `examples/inputs/product-idea.md` 绑定到 Flow 声明的 required `idea: content` 入口：
 
 ```bash
 npm exec -- huoban print --dry-run examples/flows/idea-to-spec-review.yaml \
@@ -109,7 +109,7 @@ npm exec -- huoban print --dry-run examples/flows/idea-to-spec-review.yaml \
   --bind stage-reporter=adapter:stage-reporting-mcp
 ```
 
-生成的 `Run.spec.inputBindings.idea` 保存文件内容引用与 raw-byte hash。`Run.spec.snapshot` 使用五个固定字段：
+生成的 `Run.spec.inputBindings.idea` 使用语义类型 `content`，保存 file content reference 与 raw-byte hash。`Run.spec.snapshot` 使用五个固定字段：
 
 | 字段 | 当前 CLI 哈希的内容 |
 | --- | --- |
@@ -137,7 +137,7 @@ npm run preflight
 
 该脚本更新 dry-run Run，并生成 `Artifact/idea-to-spec-review-dry-run-preflight-report`。Preflight report 的 `snapshotHash` 哈希整个 `Run.spec`，与上面的五个分项 hash 不同。
 
-默认行为是 offline。离线模式会检查入口声明、stage 来源、input binding、文件内容 hash、对象引用、generation、capability、implementation binding、本地路径和 executable；远程 context、MCP 与不可取得的远程 Artifact 内容 readiness 保持 `Unknown`。只有明确需要动态 discovery 时才使用 `--live`。
+默认行为是 offline。离线模式会检查入口声明、stage 来源、input binding、media type、object kind、文件内容 hash、对象引用、generation、capability、implementation binding、本地路径和 executable；未物化的 URL/Git blob content、远程 context 与 MCP readiness 保持 `Unknown`。只有明确需要动态 discovery 时才使用 `--live`。
 
 查看 CLI 参数：
 

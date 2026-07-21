@@ -60,7 +60,7 @@ Flow 先声明入口契约：
 # Flow spec fragment
 inputs:
   - name: document
-    type: file
+    type: content
     required: true
 ```
 
@@ -69,11 +69,10 @@ Run 再锁定这一次的值：
 ```yaml
 inputBindings:
   document:
-    type: file
-    sourcePath: requirements.md
+    type: content
     contentRef:
       type: file
-      path: inputs/document.md
+      path: requirements.md
     hash: sha256:...
 ```
 
@@ -81,12 +80,14 @@ inputBindings:
 
 | 类型 | Run 保存内容 | 完整性语义 |
 | --- | --- | --- |
-| `file` | `contentRef.path`、可选 `sourcePath`、`hash` | hash 针对文件原始 bytes；execute/resume 前重新校验。 |
+| `content` | file、URL 或 Git blob `contentRef`，可选 `mediaType` | file 必须锁 raw-byte hash；远程载体在物化并验证前不能 ready。 |
 | `text` | inline `value` | 完整 binding 由 `inputBindingHash` 锁定。 |
 | `object` | inline object `value` | 使用 canonical JSON 进入 `inputBindingHash`。 |
-| `artifactRef` | Artifact ref 与内容 `hash` | Preflight 解析 generation，并在内容可取得时复核实际内容。 |
+| `objectRef` | typed object ref 与目标对象 `spec` hash | Flow 用 `objectKinds` 限定允许的 kind；Artifact 只是可能的目标之一。 |
 
-协议不规定 `.huoban/runs/...` 之类的磁盘布局。实现可以把源文件复制到 Run 自己的内容寻址存储，但必须保存稳定内容引用与 hash。不要把 secret 放进 inline text/object；密钥属于 credential Requirement。
+这里刻意把**语义**与**载体**分开：Flow 接受 `content`，一次 Run 再选择 file、URL 或 Git blob。slash command、MCP、CLI 或其他入口都只是创建同一 binding 的实现方式，不进入公共协议。
+
+协议不规定 `.huoban/runs/...` 之类的磁盘布局。实现可以把源文件复制到 Run 自己的内容寻址存储，但必须保存稳定内容引用与 hash。reference CLI 不获取 URL；URL binding 在内容被可信 resolver 物化并验证之前保持 readiness `Unknown`。不要把 secret 放进 inline text/object；密钥属于 credential Requirement。
 
 ## Implementation binding：从 role 到实现
 
@@ -229,18 +230,17 @@ spec:
       adapterRef: stage-reporting-mcp
   inputBindings:
     idea:
-      type: file
-      sourcePath: examples/inputs/product-idea.md
+      type: content
       contentRef:
         type: file
         path: examples/inputs/product-idea.md
       hash: sha256:2fa7baf3030dddd710b3818c589ff8378d0d0b7f44af28e60ab1e254d159ac60
   snapshot:
-    flowSpecHash: sha256:54d40ab4b480360e5c80a1e00713cb30d6daaeeac37b8edd79874ff40178d2ff
+    flowSpecHash: sha256:35f574b2c801f40243ee2f6a1f96e2bba985c0fe93da887f1583a5fd1bd19269
     profileRefHash: sha256:d9ec168320ac8ea60d3aa5f049ce8a58bc0c625f1937d560c7e4b0d801f3d5d9
     policyRefHash: sha256:745db2bbc095810039b9b13ef544ce49bd28e1f7474757cf256e27906fb65006
     bindingHash: sha256:9d47cbf573e28dad7fd0080bdc96894a27ba85377421e4e34f3455cc58a5f01b
-    inputBindingHash: sha256:fe4ec97370aa81ce5d1808282aef9e48f40928897c1e2feac954cacb6ef30e28
+    inputBindingHash: sha256:44da7763a5145f0e4dccda5d8e66614372dce460fb65ef03f2c51d2544d33b8f
 status:
   phase: WaitingForCheckpoint
   currentStage: sharpen-idea
