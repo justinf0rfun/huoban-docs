@@ -1,0 +1,169 @@
+---
+title: "Skill 模型"
+sidebarTitle: "Skill 模型"
+description: "Skill 是 Huoban 的活字：声明可复用能力的接口、依赖与行为边界，不把实现、上下文或编排混在一起。"
+---
+
+`Skill` 是 Huoban 的活字：一份可复用能力的声明式契约。
+
+它说明能力叫什么、接受什么输入、产生什么输出、依赖什么环境、可能产生哪些副作用，以及是否建议在使用时设置校对点。它不保存项目上下文，不排列 stage，也不规定某个 agent、模型、命令或工具如何执行这项能力。
+
+本页属于核心概念，解释 `Skill` 的设计边界和解析链路；字段级定义、必填项和 schema 约束见 [Skill 规范](/spec-skill)。
+
+<CardGroup cols={2}>
+  <Card title="能力契约" icon="file-code" type="tip" color="#16A34A">
+    `capabilities` 表达 Skill 能提供什么能力；它不是包名、命令名或执行入口。
+  </Card>
+  <Card title="接口可检查" icon="braces" type="tip" color="#16A34A">
+    `inputs`、`outputs`、`requirements` 和 `sideEffects` 让能力边界在进入 Flow 前可见。
+  </Card>
+  <Card title="实现可替换" icon="plug" type="tip" color="#16A34A">
+    Flow 先声明 capability，Run 再绑定具体 Skill 或 Adapter，不把实现写死在版式里。
+  </Card>
+  <Card title="能力保持无状态" icon="boxes" type="tip" color="#16A34A">
+    Skill 不保存某次执行状态；动态输入、执行快照、产物和决策分别属于 Run、Artifact 与 Checkpoint。
+  </Card>
+</CardGroup>
+
+## Skill 的物理形态
+
+Huoban `Skill` 在协议层是一份符合 schema 的资源对象，通常以 YAML 或 JSON 保存：
+
+```yaml
+apiVersion: huoban.dev/v1alpha1
+kind: Skill
+metadata:
+  name: design-review
+spec:
+  capabilities:
+    - huoban.dev/designReview
+  inputs:
+    - name: proposal
+      type: markdown
+  outputs:
+    - name: review
+      artifactType: decision-notes
+  sideEffects:
+    declared:
+      - readFile
+      - writeFile
+```
+
+这个对象是能力 manifest，不是可执行包。v1alpha1 不规定 Skill 的目录布局、源代码位置、prompt 文件、模型参数、命令入口或统一调用协议。
+
+实现已经原生认识某个 Skill 时，Run 可以用 `skillRef` 锁定它。能力来自外部 `SKILL.md`、MCP tool、Claude/Codex skill、Cursor Rule、脚本或其他工具时，应先由 [Adapter](/adapter-model) 声明来源和映射。此后有两条合法路径：Run 可以直接绑定 Adapter；如果团队另外维护了一份标准 Skill 契约，也可以让 `Skill.spec.adapterRef` 关联 Adapter，再由 Run 绑定 Skill。外部自然语言文件不能因为名字叫 Skill 就直接成为可信的 Huoban `Skill`。
+
+## Skill 不是实现包
+
+Skill 的第一性职责是标准化能力边界，不是携带所有执行材料。
+
+| 概念 | 回答的问题 | 不承担 |
+| --- | --- | --- |
+| `Skill` | 这项标准能力是什么，接口、依赖和可能副作用是什么？ | 不规定执行命令、模型或工具私有参数。 |
+| `Adapter` | 外部能力从哪里来，如何映射成 Huoban capability？ | 不证明来源可信，也不决定何时调用。 |
+| `Flow` | 哪个 stage 需要什么 capability，数据如何传递？ | 不锁定具体 provider。 |
+| `Run` | 这一次用哪个 Skill 或 Adapter，绑定了哪些动态输入？ | 不重新定义能力契约。 |
+| `Registry` | 从哪些来源可以发现候选对象？ | 不做 capability 匹配或 provider 选择。 |
+| `Trust` | Skill 或 Adapter 来自哪里，经过什么审查和隔离？ | 不授予执行权限。 |
+
+一句话：Skill 是字身规格；具体字从哪里来、这次取哪一枚、在哪一版使用，分别由 Adapter、Run 和 Flow 表达。
+
+## 从 capability 到 Run binding
+
+Skill 不应被直接写死进可复用 Flow 的主路径。Huoban 使用 capability-first 链路把“需要什么”与“这次用什么”分开。
+
+<Steps>
+  <Step title="Skill 声明能力">
+    `Skill.spec.capabilities` 列出它能提供的标准能力，例如 `huoban.dev/designReview`。
+  </Step>
+  <Step title="Flow 声明需求">
+    stage 通过 `requires.capability` 和可选 `role` 声明需要什么，不提前选择 provider。
+  </Step>
+  <Step title="Run 锁定 provider">
+    `Run.spec.bindings` 把 role 绑定到具体 `skillRef` 或 `adapterRef`。
+  </Step>
+  <Step title="Preflight 检查">
+    Preflight 解析对象、核对 capability，并检查可达 Skill、Adapter、Trust、Policy 与 Requirement。
+  </Step>
+  <Step title="兼容 runtime 执行">
+    runtime 按已锁定 binding 调用实现。当前 reference CLI 只验证、解释、锁版和预检，不执行 Skill。
+  </Step>
+</Steps>
+
+```yaml
+# Flow stage fragment
+id: sharpen-idea
+requires:
+  capability: huoban.dev/designReview
+  role: primary-review
+```
+
+```yaml
+# Run spec fragment
+bindings:
+  primary-review:
+    skillRef: design-review
+```
+
+多个 Skill 或 Adapter 可以声明同一 capability。Registry 可以帮助发现候选对象，但 v1alpha1 不定义自动评分、最优选择或 capability 索引；一次执行最终采用哪个 provider，必须由 Run binding 明确锁定。
+
+## capability 不是对象身份
+
+`capability` 表达“会做什么”，Skill identity 表达“是哪一个对象”。二者不能混用：
+
+- Flow 使用 capability 保持版式可移植。
+- Run 使用 `skillRef` 或 `adapterRef` 锁定本次 provider。
+- `metadata.name` 是当前 workspace 中的对象名称。
+- `metadata.generation` 表示 `spec` 的语义代次，不是包版本。
+
+v1alpha1 尚未定义 `name@version`、semver 解析、版本范围或 Registry 版本选择。当前 `skillRef` 是名称字符串；实现不能把未进入 schema 的版本语法描述成公共协议能力。
+
+## 输入输出是能力接口
+
+`Skill.spec.inputs` 和 `Skill.spec.outputs` 描述能力接口，不保存一次调用的具体值，也不定义 Flow 内部数据流。
+
+| 位置 | 表达内容 |
+| --- | --- |
+| `Skill.spec.inputs` | 这项能力通常接收哪些输入槽。 |
+| `Skill.spec.outputs` | 这项能力通常产生哪些输出槽或 Artifact 类型。 |
+| `Flow.spec.inputs` | 一类 Flow 对调用者公开的动态入口契约。 |
+| `Flow.spec.stages[].inputs` | stage 从 Flow 入口或前序 stage 输出读取什么。 |
+| `Run.spec.inputBindings` | 这一次调用实际锁定的动态值、内容或对象引用。 |
+
+字段形状和当前类型检查边界见 [Skill 规范](/spec-skill)。概念上，这些字段是能力接口，不是一次 Run 的调用数据，也不是已经完成的跨对象类型系统。
+
+## Context、Requirement 与状态边界
+
+Skill 应尽量无状态，并把不属于能力本体的事实放回正确对象：
+
+| 信息 | 应放在哪里 |
+| --- | --- |
+| 外部环境依赖 | `Skill.spec.requirements` |
+| 团队规则、项目架构、领域术语、历史决策 | `Profile` |
+| 一次调用的动态稿件或参数 | `Run.spec.inputBindings` |
+| 执行状态、具体产物和决策请求 | `Run.status`、`Artifact`、`Checkpoint` |
+
+`profileHints` 只能提示可能需要的 Profile layer 名称，不是 Profile 引用，也不能把项目上下文重新塞回 Skill。
+
+## 治理边界
+
+Skill 声明副作用，不获得权限：
+
+```yaml
+sideEffects:
+  declared:
+    - readFile
+    - writeFile
+```
+
+这表示实现可能读写文件，供计划、Policy 和审查使用。它不证明声明完整，也不意味着 runtime 已经允许这些动作。实际观察到的副作用属于 Run；允许、拒绝或要求审批由 Policy 处理。完整枚举和验证行为见 [Skill 规范](/spec-skill)。
+
+同样，`Skill.spec.checkpoint` 只是开放的校对提示。真正发生在一次执行中的校对请求必须创建独立 `Checkpoint`，并通过 `runRef` 关联具体 Run。
+
+`Trust` 可以直接以 Skill 作为 `subjectRef`，记录来源、review、sandbox 和 `policyRefs`，但 Trust level 本身不授予执行权限。当前 reference Preflight 不会主动扫描独立的 Skill Trust；它只在绑定 Skill 关联 `adapterRef` 后，继续沿 Adapter 的 `trustRef` 检查 Trust 链路。
+
+## 当前边界
+
+Huoban v1alpha1 已定义 Skill 的能力契约以及它与 Flow、Run、Adapter、Requirement 和治理对象的关系，但没有定义统一包格式、调用协议、reference runtime、版本解析或自动 provider 选择。字段级支持和当前 CLI 行为以 [Skill 规范](/spec-skill) 为准。
+
+这个边界让 Skill 保持为可跨 agent、tool 和 runtime 共享的能力契约，而不是另一种绑定特定执行器的脚本格式。

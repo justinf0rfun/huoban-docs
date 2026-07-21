@@ -29,6 +29,7 @@
         "pages": [
           "design-philosophy",
           "object-model",
+          "skill-model",
           "profile-model",
           "flow-model",
           "run-model",
