@@ -19,6 +19,7 @@
         "pages": [
           "index",
           "quickstart",
+          "runner-guide",
           "vision-and-strategy"
         ],
         "icon": "rocket"

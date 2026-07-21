@@ -1,0 +1,221 @@
+---
+title: "实现 Runner"
+description: "从 Flow、动态调用输入和 role bindings 构建锁定 Run，并划清 Preflight、调度与执行状态边界。"
+sidebarTitle: "实现 Runner"
+---
+
+Huoban 是 AI 系统的开放编排协议：可排版、可润墨、可印刷。
+
+本页面向正在实现 slash command、MCP 调度器或独立 runner 的开发者。它回答一条任务路径：给定一个 Flow 和本次调用的数据，如何构建可验证的 Run，并安全地推进到下一步。
+
+<Warning>
+  当前 reference implementation 提供 Run materialization、Preflight 和实验性线性 planner，不提供 provider invocation、Policy enforcement、Trust、sandbox、Checkpoint 决策或 Lifecycle dispatcher。不要把测试套件通过描述成完整 runtime 兼容。
+</Warning>
+
+## 先看哪一层
+
+Huoban 的对象页不是 runner 算法。遇到实现问题时，按问题选择事实来源：
+
+| 你要回答的问题 | 事实来源 |
+| --- | --- |
+| 字段能否出现、类型是什么 | `schemas/v1alpha1/*.schema.json` 与规范参考页 |
+| 一个对象是什么、为什么存在 | 对应的模型页 |
+| 对象如何组合 | `examples/**/*.yaml` |
+| Flow 如何锁定为 Run | `lib/materialize-run.js` 与 golden test |
+| 引用、capability、依赖是否 ready | `lib/preflight.js` 与 Preflight Report |
+| 下一步线性调度能否被推导 | `lib/experimental/linear-runner.js`；实验行为，不是协议承诺 |
+| 当前参考行为是否一致 | `npm run conformance:runtime` |
+
+## 构建路径
+
+```text
+Flow 入口与 stages
+  -> 本次调用数据与实现 bindings
+  -> materializeRun
+  -> validate
+  -> Run-scope Preflight
+  -> Policy / Trust / Checkpoint gate
+  -> runner 私有调度与 provider invocation
+```
+
+<Steps>
+  <Step title="在 Flow 声明语义入口">
+
+需求文档是每次 Run 的动态调用数据，不应写死在 Flow。Flow 只声明它需要一个 Markdown `content`：
+
+```yaml
+spec:
+  inputs:
+    - name: prd
+      type: content
+      required: true
+      mediaTypes:
+        - text/markdown
+```
+
+`content` 是语义类型；file、URL 或 Git blob 是本次调用选择的载体。动态 input 不是 Requirement。
+
+  </Step>
+
+  <Step title="用 role 声明实现槽">
+
+```yaml
+stages:
+  - id: review-prd
+    requires:
+      capability: huoban.dev/designReview
+      role: reviewer
+```
+
+`requires.role` 是 Flow 内的实现槽名，也是 `Run.spec.bindings` 的 join key。它不是独立对象，不需要去 Profile、Skill 或 Registry 查找“role 定义”。
+
+同一个 role 可以被多个 stage 复用，但被绑定的 provider 必须满足这些 stage 要求的全部 capability。schema 目前允许省略 role；可执行的 capability-first Flow 不能省略，因为 runner 无法从 Run 找到锁定实现。
+
+  </Step>
+
+  <Step title="把调用数据物化为 input binding">
+
+调用 `/huoban start prd-review requirements.md` 时，slash command 或 MCP 层先读取并锁定正文：
+
+```yaml
+inputBindings:
+  prd:
+    type: content
+    contentRef:
+      type: file
+      path: requirements.md
+    mediaType: text/markdown
+    hash: sha256:...
+```
+
+如果 runner 把文件复制到自己的内容寻址存储，可以改写 locator，但必须保留来源、媒体类型和可验证内容身份。不要把任意输入文件包装成 Artifact；Artifact 表示运行产物或协议证据。
+
+  </Step>
+
+  <Step title="锁定 Run">
+
+source package 导出纯 materializer：
+
+```js
+import { materializeRun } from "huoban";
+
+const run = materializeRun({
+  flow,
+  mode: "execute",
+  name: "prd-review-001",
+  bindings: {
+    reviewer: { skillRef: "prd-reviewer" }
+  },
+  inputBindings
+});
+```
+
+它会合并 Flow 默认的 Profile/Policy refs，保存动态 input 和 role bindings，并生成五个 snapshot hashes。它只返回 `phase: Planned` 的 Run，不执行 stage。
+
+reference CLI 的 `materializeInputBindings` helper 可以读取 `file:` 或保存 `url:` carrier。MCP runner 不需要采用这套字符串语法；只要在调用 `materializeRun` 前形成合法协议 binding 即可。
+
+  </Step>
+
+  <Step title="先验证，再做执行门禁">
+
+```bash
+npm exec -- huoban validate runs/prd-review-001.yaml
+npm exec -- huoban preflight runs/prd-review-001.yaml \
+  --workspace "workspace/**/*.yaml" \
+  --out runs/prd-review-001.yaml \
+  --report artifacts/prd-review-001-preflight.yaml \
+  --offline
+```
+
+schema validation 只检查形状。Preflight 再检查 Flow generation、input contract、role binding、capability、Requirement 与 snapshot。`execute` 必须有 Run scope `PreflightReady=True`；之后仍要独立处理 Policy、Trust、Checkpoint、sandbox 和平台权限。
+
+  </Step>
+
+  <Step title="把尚未标准化的进度留在 runner 内部">
+
+当前最小线性 planner 使用如下私有 state：
+
+```js
+const executionState = {
+  completedStages: ["identify-risks"],
+  stageOutputs: {
+    "identify-risks": {
+      "review-notes": { kind: "Artifact", name: "prd-review-001-notes" }
+    }
+  },
+  resolvedCheckpoints: ["checkpoint:0"]
+};
+```
+
+这不是 Huoban 对象，不能写进 `Run.spec`。`completedStages` 用于推进顺序；`stageOutputs` 补足当前 Artifact schema 尚未表达的 output-slot 映射；`resolvedCheckpoints` 是 host 的决策记录。`pendingCheckpoint` 可以由 Flow checkpoint 声明和上述状态推导，因此不应重复持久化。
+
+实验 planner 会返回 `stage`、`checkpoint` 或 `complete`。它验证了最小状态模型可工作，但尚未作为 package interface 导出。
+
+  </Step>
+</Steps>
+
+## 对象由谁创建
+
+| 对象或状态 | 典型创建者 | 时间点 |
+| --- | --- | --- |
+| Skill、Profile、Flow、Policy、Adapter、Registry、Trust | 能力/平台作者 | 多次 Run 复用之前 |
+| Run `spec` | invocation adapter / materializer | 每次调用开始时 |
+| Preflight Report Artifact 与 Run Preflight status | Preflight 实现 | execute gate 之前 |
+| Checkpoint | runner / checkpoint adapter | 到达 Flow 声明的决策位置时 |
+| 业务 Artifact 与 Run status | runner | stage 执行期间 |
+| completed stages、output-slot map、resolved decisions | runner 私有存储 | 调度过程中 |
+
+## 最小 Runner Contract
+
+当前证据支持以下最小顺序，不支持完整 provider invocation envelope：
+
+1. 接受 `Flow + invocation data + implementation bindings`。
+2. 生成锁定且可复现的 Run。
+3. validate 并执行 Run-scope Preflight。
+4. 应用独立的 Policy、Trust、Checkpoint 和平台权限 gate。
+5. 依据 Flow 顺序与 runner 私有 state 推导下一 action。
+6. provider 返回后，由 runner 创建 Artifact，并在私有 `stageOutputs[stage][output]` 中记录槽位映射。
+7. 更新 Run 的可观察状态；不要把私有调度结构发明成协议字段。
+
+尚未标准化的部分包括：Skill/Adapter 调用 envelope、Profile 注入格式、Policy 冲突和求值顺序、checkpoint decision 状态、output-slot 的公共表达、重试/恢复语义，以及 Run phase 状态机。
+
+## 运行参考 conformance
+
+```bash
+npm run conformance:runtime
+```
+
+命令输出 JSON，并用退出码表示整体结果。当前 suite id 是 `huoban.dev/runtime-conformance/v1alpha1`，验证两个独立 feature：
+
+- `run-materialization`：Flow、mode、bindings、动态 input 与 canonical snapshot hashes 被正确锁定。
+- `linear-scheduling`：两个真实 workflow 能产生预期的 stage、checkpoint 和 complete action。
+
+第三方实现可以导入 test kit：
+
+```js
+import { verifyRuntimeConformance } from "huoban/runtime-conformance";
+
+const report = await verifyRuntimeConformance({
+  materializeRun: myMaterializer,
+  nextRunAction: myPlanner
+});
+```
+
+该 suite 是 repository-level 测试契约，不是新的顶层 kind，也不是 L0-L5 等级。通过它不能声称 Policy enforcement、Trust、sandbox、provider invocation 或完整 runtime 已兼容。
+
+## 下一步
+
+<CardGroup cols={2}>
+  <Card title="Flow 模型" icon="route" href="/flow-model">
+    理解 capability、role、输入来源、输出与 checkpoint 位置。
+  </Card>
+  <Card title="Run 模型" icon="lock" href="/run-model">
+    理解动态 binding、snapshot 与状态边界。
+  </Card>
+  <Card title="Preflight" icon="list-check" href="/preflight-model">
+    区分 resolution、readiness 和授权。
+  </Card>
+  <Card title="兼容与验证" icon="shield-check" href="/conformance">
+    查看 reference CLI 与 runtime suite 的精确声明范围。
+  </Card>
+</CardGroup>
